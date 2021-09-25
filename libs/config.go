@@ -5,18 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
-	"runtime"
+	"path/filepath"
 )
 
 // 获取当前执行文件绝对路径（go run）
 func getCurrentAbPathByCaller() string {
-	var abPath string
-	_, filename, _, ok := runtime.Caller(0)
-	if ok {
-		abPath = path.Dir(filename)
+	ex, err := os.Executable()
+	if err != nil {
+		Fatal("Cann't Read Config File")
 	}
-	return abPath
+	exPath := filepath.Dir(ex)
+	return exPath
 }
 
 func LoadFinger() (error,Config){

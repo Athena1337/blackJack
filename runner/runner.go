@@ -36,10 +36,12 @@ func (r *Runner) CreateRunner() {
 	wg := sizedwaitgroup.New(r.options.Threads) // set threads , 50 by default
 	r.generate(&wg)
 	wg.Wait()
-	log.Info(fmt.Sprintf("%s",Bold(Green("重点资产: "))))
-	fmt.Println(" ")
-	for _,f := range focusOn{
-		fmt.Println(f)
+	if len(focusOn) != 0{
+		log.Info(fmt.Sprintf("%s",Bold(Green("重点资产: "))))
+		fmt.Println(" ")
+		for _,f := range focusOn{
+			fmt.Println(f)
+		}
 	}
 }
 
