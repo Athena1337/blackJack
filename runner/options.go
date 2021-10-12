@@ -1,8 +1,8 @@
 package runner
 
 import (
-	"blackJack/libs"
 	"blackJack/log"
+	"blackJack/utils"
 	"flag"
 )
 
@@ -39,7 +39,7 @@ func ParseOptions() *Options {
 }
 
 func (options *Options) validateOptions() {
-	if options.urlFile != "" && !libs.FileNameIsGlob(options.urlFile) && !libs.FileExists(options.urlFile) {
+	if options.urlFile != "" && !utils.FileNameIsGlob(options.urlFile) && !utils.FileExists(options.urlFile) {
 		log.Fatal("File does not exist!")
 	}
 

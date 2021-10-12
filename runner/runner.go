@@ -1,8 +1,9 @@
 package runner
 
 import (
-	. "blackJack/libs"
+	. "blackJack/config"
 	"blackJack/log"
+	. "blackJack/utils"
 	"fmt"
 	. "github.com/logrusorgru/aurora"
 	"net/http"
@@ -13,11 +14,26 @@ import (
 )
 
 var focusOn []string
-var FINGER Config
+var CONFIG Config
 
 // Runner A user options
 type Runner struct {
 	options *Options
+}
+
+// Result of a scan
+type Result struct {
+	Raw              string
+	URL              string `json:"url,omitempty"`
+	Location         string `json:"location,omitempty"`
+	Title            string `json:"title,omitempty"`
+	Host             string `json:"host,omitempty"`
+	ContentLength    int64  `json:"content-length,omitempty"`
+	StatusCode       int    `json:"status-code,omitempty"`
+	VHost            string `json:"vhost,omitempty"`
+	CDN              string `json:"cdn,omitempty"`
+	Finger			 []string `json:"finger,omitempty"`
+	Technologies     []string `json:"technologies,omitempty"`
 }
 
 func Init(options *Options) *Runner {
@@ -29,7 +45,7 @@ func Init(options *Options) *Runner {
 
 // CreateRunner 创建扫描
 func (r *Runner) CreateRunner() {
-	_, FINGER = LoadFinger()
+	_, CONFIG = LoadFinger()
 	SetEnv(r.options.isDebug)
 
 	log.Warn(fmt.Sprintf("Default threads: %d", r.options.Threads))
@@ -37,8 +53,8 @@ func (r *Runner) CreateRunner() {
 	r.generate(&wg)
 	wg.Wait()
 	if len(focusOn) != 0{
-		log.Info(fmt.Sprintf("%s",Bold(Green("重点资产: "))))
 		fmt.Println(" ")
+		log.Info(fmt.Sprintf("%s",Bold(Green("重点资产: "))))
 		for _,f := range focusOn{
 			fmt.Println(f)
 		}
@@ -233,57 +249,19 @@ func output(Output string, resp Result) {
 // analyze content by fingerprint
 //
 // analyze with 3 ways
-// fisrstly, extract `X-Powered-By` and `Header` in header
-// secondly,  Judgment keyword from finger
-// last, detect faviconhash
+// fisrstly, Judgment keyword from finger
+// secondly,  detect faviconhash
+// last, extract `X-Powered-By` and `Header` in header
 //
 // append to the result.Technologies[] if hitted
 func analyze(faviconHash string, headerContent []http.Header, indexContent []string, resultContent *Result) Result {
-	configs := FINGER.Fingerprint
+	configs := CONFIG.Rules
 	result := resultContent
-	var v Finger
+	var f Finger
 
-	// read all finger
-	for _, v = range configs {
-		if v.Method == "keyword" {
-			// if keyword in body
-			if v.Location == "body" {
-				for _, c := range indexContent {
-					flag := true // make sure Both conditions are satisfied
-					for _, k := range v.Keyword {
-						if !strings.Contains(c, k) {
-							flag = flag && false
-						}
-					}
-					if flag && !StringArrayContains(result.Finger, v.Cms) {
-						result.Finger = append(result.Finger, v.Cms)
-					}
-				}
-			}
-
-			// if keyword in header
-			if v.Location == "header" {
-				for _, h := range headerContent {
-					flag := false
-					for _, k := range v.Keyword {
-						for _, v := range h {
-							if strings.Contains(StringArrayToString(v), k) { // not support `and` condition
-								flag = true
-							}
-						}
-					}
-					if flag && !StringArrayContains(result.Finger, v.Cms) {
-						result.Finger = append(result.Finger, v.Cms) // avoid finger cover
-					}
-				}
-			}
-		}
-
-		// favicon detect
-		if v.Method == "faviconhash" && faviconHash != "" {
-			if v.Keyword[0] == faviconHash && !StringArrayContains(result.Finger, v.Cms) {
-				result.Finger = append(result.Finger, v.Cms)
-			}
+	for _,f = range configs {
+		for _,p := range f.Fingerprint{
+			result.Finger = append(result.Finger, detect(f.Name, faviconHash, headerContent, indexContent, p)...)
 		}
 	}
 
@@ -300,4 +278,48 @@ func analyze(faviconHash string, headerContent []http.Header, indexContent []str
 		break
 	}
 	return *result
+}
+
+func detect(name string, faviconHash string, headerContent []http.Header, indexContent []string, mf MetaFinger) (rs []string){
+	if mf.Method == "keyword" {
+		flag := detectKeywords(headerContent, indexContent, mf)
+		if flag && !StringArrayContains(rs, name) {
+			rs = append(rs, name)
+		}
+	}
+
+	if mf.Method == "faviconhash" && faviconHash != "" {
+		if mf.Keyword[0] == faviconHash && !StringArrayContains(rs, name) {
+			rs = append(rs, name)
+		}
+	}
+	return
+}
+
+func detectKeywords(headerContent []http.Header, indexContent []string, mf MetaFinger) bool{
+	// if keyword in body
+	if mf.Location == "body" {
+		for _, k := range mf.Keyword {
+			for _, c := range indexContent {
+				// make sure Both conditions are satisfied
+				// TODO  && mf.StatusCode == header
+				if !strings.Contains(c, k){
+					return false
+				}
+			}
+		}
+	}
+
+	if mf.Location == "header"{
+		for _, k := range mf.Keyword {
+			for _, h := range headerContent {
+				for _, v := range h {
+					if !strings.Contains(StringArrayToString(v), k) {
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
 }

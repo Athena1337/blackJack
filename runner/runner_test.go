@@ -6,8 +6,8 @@ import (
 )
 
 func TestRunner(t *testing.T){
-	libs.SetEnv(true)
-	_, FINGER= libs.LoadFinger()
+	utils.SetEnv(true)
+	_, FINGER= utils.LoadFinger()
 	url := "google.com"
 	faviconHash, headerContent, urlContent, resultContent := scan(url, "", 50, "https")
 	result := analyze(faviconHash, headerContent, urlContent, resultContent)

@@ -1,8 +1,8 @@
 package runner
 
 import (
-	"blackJack/libs"
 	"blackJack/log"
+	"blackJack/utils"
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
@@ -16,7 +16,7 @@ func GetFaviconHash(HashURL string, timeOut int, proxy string) (string, error){
 	if err != nil {
 		return  "", fmt.Errorf("get favcion error")
 	}else{
-		ret := libs.Mmh3Hash32(libs.StandBase64(content))
+		ret := utils.Mmh3Hash32(utils.StandBase64(content))
 		return ret, nil
 	}
 }
@@ -56,7 +56,7 @@ func HttpReqForIcon(requrl string, timeOut int, proxy string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", libs.GetUserAgent())
+	req.Header.Set("User-Agent", utils.GetUserAgent())
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

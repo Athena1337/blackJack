@@ -54,7 +54,6 @@ Usage of blackJack.exe:
 + WAF、CDN识别
 + 指纹覆盖优化，避免302跳转、CDN、均衡负载导致识别失效
 + 集成`icon hash`生成
-+ 新增指纹至748条
 
 ## Thanks
 

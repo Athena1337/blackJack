@@ -1,2 +1,5 @@
+out
+tmp
 .idea
+.gitignore
 blackJack-*
