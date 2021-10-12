@@ -48,12 +48,20 @@ Usage of blackJack.exe:
 λ blackJack -u https://google.com
 ```
 
-## Features
+## Update Logs
 
+### v1.0-beta1 
 + 自动协议识别
 + WAF、CDN识别
 + 指纹覆盖优化，避免302跳转、CDN、均衡负载导致识别失效
 + 集成`icon hash`生成
++ 集成指纹748条
+
+### V1.0-beta2
++ 深度去重指纹
++ 重构指纹结构
++ 重构优化部分处理模块
++ 更新指纹1833条，合计2581条
 
 ## Thanks
 
