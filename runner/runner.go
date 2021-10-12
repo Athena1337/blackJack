@@ -174,7 +174,7 @@ retry:
 	log.Debug("GetContent with NoRedirect: " + indexUrl)
 	header, content, _, err := HttpReqWithNoRedirect(indexUrl, timeOut, proxy)
 	if err != nil {
-		log.Error(fmt.Sprintf("%s", err))
+		log.Debug(fmt.Sprintf("%s", err))
 	} else {
 		urlContent = append(urlContent, content)
 		headerContent = append(headerContent, header)
@@ -186,7 +186,7 @@ retry:
 	if err == nil && faviconHash != "" {
 		log.Debug(fmt.Sprintf("GetIconHash: %s %s success", faviconUrl, faviconHash))
 	} else if err != nil {
-		log.Warn(fmt.Sprintf("GetIconHash Error %s", err))
+		log.Debug(fmt.Sprintf("GetIconHash Error %s", err))
 	}
 	return
 }
@@ -196,6 +196,9 @@ func output(Output string, resp Result) {
 	var f *os.File
 	var finger string
 	var technology string
+	if resp.URL == "None"{
+		return
+	}
 	for k, v := range resp.Finger {
 		if k == 0 {
 			finger = v
