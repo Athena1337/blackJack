@@ -4,6 +4,7 @@ import (
 	"blackJack/log"
 	"blackJack/utils"
 	"flag"
+	"time"
 )
 
 type Options struct{
@@ -15,8 +16,9 @@ type Options struct{
 	urls         []string
 	urlFile      string
 	isDebug      bool
-	TimeOut      int
+	TimeOut      time.Duration
 	Threads      int
+	RetryMax	 int
 	Output       string
 	JSONOutput   bool
 	Proxy        string
@@ -27,8 +29,9 @@ func ParseOptions() *Options {
 	flag.StringVar(&options.targetUrl ,"u", "", "single target url")
 	flag.StringVar(&options.urlFile, "l", "", "the list file contain mutilple target url")
 	flag.BoolVar(&options.isDebug, "d", false, "enable debug mode")
-	flag.IntVar(&options.TimeOut, "time", 5, "request timeout")
+	flag.DurationVar(&options.TimeOut, "time", 30 * time.Second, "request timeout")
 	flag.IntVar(&options.Threads, "t",  50, "request thread, default 50")
+	flag.IntVar(&options.RetryMax, "r", 5, "Max Retry attempts")
 	flag.StringVar(&options.Output, "o", "", "output file")
 	//flag.StringVar(&options.origProtocol, "p", "", "http/https protocal")
 	flag.StringVar(&options.Proxy, "p", "", "http proxy ,Ex: http://127.0.0.1:8080")

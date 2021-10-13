@@ -4,13 +4,43 @@ import (
 	"blackJack/log"
 	"blackJack/utils"
 	"crypto/tls"
-	"fmt"
-	"github.com/projectdiscovery/cdncheck"
-	"net"
+	pdhttputil "github.com/projectdiscovery/httputil"
+	"github.com/projectdiscovery/retryablehttp-go"
 	"net/http"
 	"net/url"
 	"time"
 )
+
+func (r *Runner) Request(method string, url string)(headers http.Header, rawResp []byte, err error){
+	request, err := r.NewRequest(method,url)
+	if err != nil{
+		return
+	}
+	do, err := r.client.Do(request)
+	if err != nil{
+		return
+	}
+	_, rawResp, err = pdhttputil.DumpResponseHeadersAndRaw(do)
+	headers = request.Header.Clone()
+	return
+}
+
+// NewRequest from url
+func (r *Runner) NewRequest(method, targetURL string) (req *retryablehttp.Request, err error) {
+	req, err = retryablehttp.NewRequest(method, targetURL, nil)
+	if err != nil {
+		return
+	}
+
+	// set default user agent
+	req.Header.Set("User-Agent", utils.GetUserAgent())
+	// 检测shiro指纹
+	req.Header.Set("Cookie", "rememberMe=6gYvaCGZaDXt1c0xwriXj/Uvz6g8OMT3VSaAK4WL0Fvqvkcm0nf3CfTwkWWTT4EjeSS")
+	// set default encoding to accept utf8
+	req.Header.Add("Accept-Charset", "utf-8")
+	return
+}
+
 
 /*
 Must be A
@@ -32,51 +62,13 @@ func HttpReqWithNoRedirect(requrl string, timeOut int, proxy string) (http.Heade
 
 	var client http.Client
 
-	if proxy != ""{
-		proxyUrl, err := url.Parse(proxy)
-		if err != nil{
-			log.Error("Proxy Url Can Not Identify, Droped")
-			client = http.Client{
-				Timeout: time.Second * time.Duration(timeOut),
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // don't check cert
-				},
-				CheckRedirect: 	func(req *http.Request, via []*http.Request) error {
-					return http.ErrUseLastResponse
-				},
-			}
-		}else{
-			client = http.Client{
-				Timeout: time.Second * time.Duration(timeOut),
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // don't check cert
-					Proxy: http.ProxyURL(proxyUrl),
-				},
-				CheckRedirect: 	func(req *http.Request, via []*http.Request) error {
-					return http.ErrUseLastResponse
-				},
-			}
-		}
-	}else{
-		client = http.Client{
-			Timeout: time.Second * time.Duration(timeOut),
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // don't check cert
-			},
-			CheckRedirect: 	func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
-	}
-
 
 	req, err := http.NewRequest("GET", requrl, nil) //nolint
 	if err != nil {
 		return nil, "", *result, err
 	}
 	req.Header.Set("User-Agent", utils.GetUserAgent())
-	// 检测shiro指纹
-	req.Header.Set("Cookie", "rememberMe=6gYvaCGZaDXt1c0xwriXj/Uvz6g8OMT3VSaAK4WL0Fvqvkcm0nf3CfTwkWWTT4EjeSS")
+
 
 	resp, err := client.Do(req)
 	if err != nil{
@@ -89,19 +81,6 @@ func HttpReqWithNoRedirect(requrl string, timeOut int, proxy string) (http.Heade
 		result.Title, body = utils.ExtractTitle(resp)
 	}
 	defer resp.Body.Close() //nolint
-
-
-	cdn, err := cdncheck.NewWithCache()
-    if err != nil {
-        log.Debug(fmt.Sprintf("%s", err))
-    }else{
-		if found, err := cdn.Check(net.ParseIP(req.Host)); found && err == nil {
-			result.CDN = "isCDN"
-		}
-		if err != nil {
-			return nil, "", *result, err
-		}
-	}
 	return resp.Header, body, *result, nil
 }
 
@@ -171,19 +150,6 @@ func HttpReq(requrl string, timeOut int, proxy string) (http.Header, string, Res
 		result.Title, body = utils.ExtractTitle(resp)
 	}
 	defer resp.Body.Close() //nolint
-
-
-	cdn, err := cdncheck.NewWithCache()
-    if err != nil {
-        log.Debug(fmt.Sprintf("%s", err))
-    }else{
-		if found, err := cdn.Check(net.ParseIP(req.Host)); found && err == nil {
-			result.CDN = "isCDN"
-		}
-		if err != nil {
-			return nil, "", *result, err
-		}
-	}
 	return resp.Header, body, *result, nil
 }
 
