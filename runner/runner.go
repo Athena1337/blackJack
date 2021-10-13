@@ -1,7 +1,7 @@
 package runner
 
 import (
-	. "blackJack/config"
+	"blackJack/config"
 	"blackJack/log"
 	. "blackJack/utils"
 	"crypto/tls"
@@ -12,7 +12,6 @@ import (
 	pdhttputil "github.com/projectdiscovery/httputil"
 	"github.com/projectdiscovery/retryablehttp-go"
 	"github.com/remeh/sizedwaitgroup"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -25,31 +24,14 @@ import (
 )
 
 var focusOn []string
-var CONFIG Config
+var CONFIG config.Config
 
 // Runner A user options
 type Runner struct {
-	bj               *BlackJack
 	noRedirectClient *retryablehttp.Client
 	client           *retryablehttp.Client
 	Dialer           *fastdialer.Dialer
-	options          *Options
-}
-
-// Response contains the response to a server
-type Response struct {
-	StatusCode    int
-	Headers       map[string][]string
-	Data          []byte
-	ContentLength int
-	Raw           string
-	RawHeaders    string
-	Words         int
-	Lines         int
-	CSPData       *CSPData
-	HTTP2         bool
-	Pipeline      bool
-	Duration      time.Duration
+	options          *config.Options
 }
 
 // Result of a scan
@@ -67,7 +49,7 @@ type Result struct {
 	Technologies  []string `json:"technologies,omitempty"`
 }
 
-func New(options *Options) (*Runner, error) {
+func New(options *config.Options) (*Runner, error) {
 	runner := &Runner{
 		options: options,
 	}
@@ -115,15 +97,15 @@ func New(options *Options) (*Runner, error) {
 }
 
 // CreateRunner 创建扫描
-func (r *Runner) CreateRunner(options *Options) {
-	_, CONFIG = LoadFinger()
-	SetEnv(r.options.isDebug)
+func (r *Runner) CreateRunner() {
+	_, CONFIG = config.LoadFinger()
+	config.SetEnv(r.options.IsDebug)
 
 	// output routine
 	wgoutput := sizedwaitgroup.New(1)
 	wgoutput.Add()
 	output := make(chan Result)
-	r.output(output, &wgoutput)
+	go r.output(output, &wgoutput)
 
 	// runner
 	log.Warn(fmt.Sprintf("Default threads: %d", r.options.Threads))
@@ -144,12 +126,12 @@ func (r *Runner) CreateRunner(options *Options) {
 
 // generate all target url
 func (r *Runner) generate(output chan Result, wg *sizedwaitgroup.SizedWaitGroup) {
-	if r.options.targetUrl != "" {
-		log.Info(fmt.Sprintf("single target: %s", r.options.targetUrl))
+	if r.options.TargetUrl != "" {
+		log.Info(fmt.Sprintf("single target: %s", r.options.TargetUrl))
 		wg.Add()
-		go r.process(output, r.options, r.options.targetUrl, wg)
+		go r.process(output, r.options, r.options.TargetUrl, wg)
 	} else {
-		urls, err := ReadFile(r.options.urlFile)
+		urls, err := ReadFile(r.options.UrlFile)
 		if err != nil {
 			log.Fatal("Cann't read url file")
 		} else {
@@ -163,12 +145,12 @@ func (r *Runner) generate(output chan Result, wg *sizedwaitgroup.SizedWaitGroup)
 }
 
 // process 请求获取每个url内容用于后续分析
-func (r *Runner) process(output chan Result, ret *Options, url string, wg *sizedwaitgroup.SizedWaitGroup) () {
+func (r *Runner) process(output chan Result, ret *config.Options, url string, wg *sizedwaitgroup.SizedWaitGroup) () {
 	defer wg.Done()
-	options := &Options{}
+	options := &config.Options{}
 	proxy := ret.Proxy
-	origProtocol := options.origProtocol
-	log.Debug(options.origProtocol)
+	origProtocol := options.OrigProtocol
+	log.Debug(options.OrigProtocol)
 	log.Debug(url)
 	faviconHash, headerContent, urlContent, resultContent := r.scan(url, proxy, origProtocol)
 	output <- analyze(faviconHash, headerContent, urlContent, resultContent)
@@ -176,7 +158,7 @@ func (r *Runner) process(output chan Result, ret *Options, url string, wg *sized
 
 // scan 扫描单个url
 // return icon指纹 响应头列表 响应体列表 结果样例
-func (r *Runner)scan(url string, proxy string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result) {
+func (r *Runner) scan(url string, proxy string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result) {
 	var indexUrl string
 	var faviconUrl string
 	var errorUrl string
@@ -234,29 +216,28 @@ retry:
 	// 获得网站主页内容和不存在页面的内容
 	for k, v := range urls { //range returns both the index and value
 		log.Debug("GetContent: " + v)
-		header, content, err := r.Request("GET",v)
+		resp, err := r.Request("GET", v, true)
 		// 如果是https，则拥有一次重试机会，避免协议不匹配问题
 		if err != nil && !retried && origProtocol == "https" {
 			log.Debug(fmt.Sprintf("request url %s error", v))
 			retried = true
 			goto retry
 		} else {
-			urlContent = append(urlContent, string(content...))
-			headerContent = append(headerContent, header)
+			urlContent = append(urlContent, string(resp.Data))
+			headerContent = append(headerContent, resp.Headers)
 			if k == 0 {
-				result := &Result{
-					Raw: "None",
-					URL: "None",
-					Location: "None", //
-					Title: "None",
-					Host: "None", //
-					ContentLength: 0,
-					StatusCode: 0,
-					VHost: "noVhost", //
-					CDN: "noCDN", //
-					Technologies: []string{},
+				resultContent = &Result{
+					Raw:           resp.Raw,
+					URL:           v,
+					Location:      "None", //
+					Title:         resp.Title,
+					Host:          resp.Host, //
+					ContentLength: int64(resp.ContentLength),
+					StatusCode:    resp.StatusCode,
+					VHost:         "noVhost", //
+					CDN:           "noCDN",   //
+					Technologies:  []string{},
 				}
-				resultContent = &result
 			}
 		}
 	}
@@ -264,17 +245,18 @@ retry:
 	// 以非重定向的方式获得网站内容
 	// 同时分析两种情况，避免重定向跳转导致获得失败，避免反向代理和CDN导致收集面缩小
 	log.Debug("GetContent with NoRedirect: " + indexUrl)
-	header, content, _, err := HttpReqWithNoRedirect(indexUrl, timeOut, proxy)
+	resp, err := r.Request("GET", indexUrl, false)
+
 	if err != nil {
 		log.Debug(fmt.Sprintf("%s", err))
 	} else {
-		urlContent = append(urlContent, content)
-		headerContent = append(headerContent, header)
+		urlContent = append(urlContent, string(resp.Data))
+		headerContent = append(headerContent, resp.Headers)
 	}
 
 	// 获取icon指纹
 	log.Debug("GetIconHash: " + faviconUrl)
-	faviconHash, err = GetFaviconHash(faviconUrl, proxy)
+	faviconHash, err = r.GetFaviconHash(faviconUrl)
 	if err == nil && faviconHash != "" {
 		log.Debug(fmt.Sprintf("GetIconHash: %s %s success", faviconUrl, faviconHash))
 	} else if err != nil {
@@ -294,9 +276,9 @@ retry:
 }
 
 // output 输出处理
-func (r *Runner)output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGroup) {
+func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGroup) {
 	defer wgoutput.Done()
-	for resp := range output{
+	for resp := range output {
 		var f *os.File
 		var finger string
 		var technology string
@@ -366,7 +348,7 @@ func (r *Runner)output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGro
 func analyze(faviconHash string, headerContent []http.Header, indexContent []string, resultContent *Result) Result {
 	configs := CONFIG.Rules
 	result := resultContent
-	var f Finger
+	var f config.Finger
 
 	for _, f = range configs {
 		for _, p := range f.Fingerprint {
@@ -389,7 +371,7 @@ func analyze(faviconHash string, headerContent []http.Header, indexContent []str
 	return *result
 }
 
-func detect(name string, faviconHash string, headerContent []http.Header, indexContent []string, mf MetaFinger) (rs []string) {
+func detect(name string, faviconHash string, headerContent []http.Header, indexContent []string, mf config.MetaFinger) (rs []string) {
 	if mf.Method == "keyword" {
 		flag := detectKeywords(headerContent, indexContent, mf)
 		if flag && !StringArrayContains(rs, name) {
@@ -405,7 +387,7 @@ func detect(name string, faviconHash string, headerContent []http.Header, indexC
 	return
 }
 
-func detectKeywords(headerContent []http.Header, indexContent []string, mf MetaFinger) bool {
+func detectKeywords(headerContent []http.Header, indexContent []string, mf config.MetaFinger) bool {
 	// if keyword in body
 	if mf.Location == "body" {
 		for _, k := range mf.Keyword {
@@ -466,13 +448,13 @@ get_response:
 	if httpresp.StatusCode != http.StatusSwitchingProtocols {
 		var err error
 		respbody, err = ioutil.ReadAll(httpresp.Body)
-		if err != nil{
+		if err != nil {
 			return nil, err
 		}
 	}
 
 	closeErr := httpresp.Body.Close()
-	if closeErr != nil{
+	if closeErr != nil {
 		return nil, closeErr
 	}
 

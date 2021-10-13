@@ -1,6 +1,7 @@
 package main
 
 import (
+	"blackJack/config"
 	"blackJack/log"
 	"blackJack/runner"
 	"fmt"
@@ -8,7 +9,7 @@ import (
 
 func main() {
 	runner.ShowBanner()
-	options := runner.ParseOptions()
+	options := config.ParseOptions()
 
 	var err error
 	r, err := runner.New(options)
@@ -18,7 +19,7 @@ func main() {
 
 	if options.FaviconUrl != ""{
 		// 分析网站icon指纹
-		faviconHash, err := runner.GetFaviconHash(options.FaviconUrl)
+		faviconHash, err := r.GetFaviconHash(options.FaviconUrl)
 		if err != nil && faviconHash != ""{
 			log.Info(fmt.Sprintf("faviconHash: %s", faviconHash))
 		}else{

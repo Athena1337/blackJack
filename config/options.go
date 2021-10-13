@@ -1,4 +1,4 @@
-package runner
+package config
 
 import (
 	"blackJack/log"
@@ -8,17 +8,17 @@ import (
 )
 
 type Options struct{
-	targetUrl    string
-	indexUrl     string
+	TargetUrl    string
+	IndexUrl     string
 	FaviconUrl   string
-	errorUrl     string
-	origProtocol string
-	urls         []string
-	urlFile      string
-	isDebug      bool
+	ErrorUrl     string
+	OrigProtocol string
+	Urls         []string
+	UrlFile      string
+	IsDebug      bool
 	TimeOut      time.Duration
 	Threads      int
-	RetryMax	 int
+	RetryMax     int
 	Output       string
 	JSONOutput   bool
 	Proxy        string
@@ -26,9 +26,9 @@ type Options struct{
 
 func ParseOptions() *Options {
 	options := &Options{}
-	flag.StringVar(&options.targetUrl ,"u", "", "single target url")
-	flag.StringVar(&options.urlFile, "l", "", "the list file contain mutilple target url")
-	flag.BoolVar(&options.isDebug, "d", false, "enable debug mode")
+	flag.StringVar(&options.TargetUrl,"u", "", "single target url")
+	flag.StringVar(&options.UrlFile, "l", "", "the list file contain mutilple target url")
+	flag.BoolVar(&options.IsDebug, "d", false, "enable debug mode")
 	flag.DurationVar(&options.TimeOut, "time", 30 * time.Second, "request timeout")
 	flag.IntVar(&options.Threads, "t",  50, "request thread, default 50")
 	flag.IntVar(&options.RetryMax, "r", 5, "Max Retry attempts")
@@ -42,20 +42,20 @@ func ParseOptions() *Options {
 }
 
 func (options *Options) validateOptions() {
-	if options.urlFile != "" && !utils.FileNameIsGlob(options.urlFile) && !utils.FileExists(options.urlFile) {
+	if options.UrlFile != "" && !utils.FileNameIsGlob(options.UrlFile) && !utils.FileExists(options.UrlFile) {
 		log.Fatal("File does not exist!")
 	}
 
-	if options.targetUrl == "" && options.urlFile == "" {
+	if options.TargetUrl == "" && options.UrlFile == "" {
 		log.Error("Usage: -h to see the help info")
 		log.Fatal("Require target url or url file!")
 	}
 
-	if options.isDebug{
+	if options.IsDebug {
 		log.Debug("Enable Debug mode")
 	}
 
-	if options.origProtocol == ""{
-		options.origProtocol = "https||http"
+	if options.OrigProtocol == ""{
+		options.OrigProtocol = "https||http"
 	}
 }
