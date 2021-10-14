@@ -5,7 +5,6 @@ import (
 	"blackJack/utils"
 	"crypto/tls"
 	pdhttputil "github.com/projectdiscovery/httputil"
-	"github.com/projectdiscovery/retryablehttp-go"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -112,16 +111,24 @@ get_response:
 }
 
 // NewRequest from url
-func (r *Runner) NewRequest(method, targetURL string) (req *retryablehttp.Request, err error) {
-	req, err = retryablehttp.NewRequest(method, targetURL, nil)
+func (r *Runner) NewRequest(method, targetURL string) (req *http.Request, err error) {
+	//req, err = retryablehttp.NewRequest(method, targetURL, nil)
+	req = &http.Request{}
+	req.Method = method
+	parse, err := url.Parse(targetURL)
+	if err != nil {
+		return nil, err
+	}
+	req.URL = parse
 	if err != nil {
 		return
 	}
 
+
 	// set default user agent
-	req.Header.Set("User-Agent", utils.GetUserAgent())
+	req.Header.Add("User-Agent", utils.GetUserAgent())
 	// 检测shiro指纹
-	req.Header.Set("Cookie", "rememberMe=6gYvaCGZaDXt1c0xwriXj/Uvz6g8OMT3VSaAK4WL0Fvqvkcm0nf3CfTwkWWTT4EjeSS")
+	req.Header.Add("Cookie", "rememberMe=6gYvaCGZaDXt1c0xwriXj/Uvz6g8OMT3VSaAK4WL0Fvqvkcm0nf3CfTwkWWTT4EjeSS")
 	// set default encoding to accept utf8
 	req.Header.Add("Accept-Charset", "utf-8")
 	return

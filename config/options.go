@@ -59,3 +59,11 @@ func (options *Options) validateOptions() {
 		options.OrigProtocol = "https||http"
 	}
 }
+
+var DefaultOption = Options{
+	TargetUrl: "https://google.com",
+	IsDebug: true,
+	TimeOut: 30 * time.Second,
+	Threads: 50,
+	RetryMax: 5,
+}

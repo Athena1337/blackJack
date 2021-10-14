@@ -28,8 +28,8 @@ var CONFIG config.Config
 
 // Runner A user options
 type Runner struct {
-	noRedirectClient *retryablehttp.Client
-	client           *retryablehttp.Client
+	noRedirectClient *http.Client
+	client           *http.Client
 	Dialer           *fastdialer.Dialer
 	options          *config.Options
 }
@@ -54,10 +54,10 @@ func New(options *config.Options) (*Runner, error) {
 		options: options,
 	}
 	// 创建不允许重定向的http client
-	var redirectFunc = func(_ *http.Request, _ []*http.Request) error {
-		// Tell the http client to not follow redirect
-		return http.ErrUseLastResponse
-	}
+	//var redirectFunc = func(_ *http.Request, _ []*http.Request) error {
+	//	// Tell the http client to not follow redirect
+	//	return http.ErrUseLastResponse
+	//}
 
 	var retryablehttpOptions = retryablehttp.DefaultOptionsSpraying
 	retryablehttpOptions.Timeout = options.TimeOut
@@ -81,17 +81,17 @@ func New(options *config.Options) (*Runner, error) {
 			transport.Proxy = http.ProxyURL(proxyUrl)
 		}
 	}
-
-	runner.client = retryablehttp.NewWithHTTPClient(&http.Client{
-		Transport:     transport,
-		Timeout:       30 * time.Second,
-		CheckRedirect: redirectFunc,
-	}, retryablehttpOptions)
-
-	runner.noRedirectClient = retryablehttp.NewWithHTTPClient(&http.Client{
-		Transport: transport,
-		Timeout:   30 * time.Second,
-	}, retryablehttpOptions)
+	//
+	//runner.client = retryablehttp.NewWithHTTPClient(&http.Client{
+	//	Transport:     transport,
+	//	Timeout:       30 * time.Second,
+	//	CheckRedirect: redirectFunc,
+	//}, retryablehttpOptions)
+	//
+	//runner.noRedirectClient = retryablehttp.NewWithHTTPClient(&http.Client{
+	//	Transport: transport,
+	//	Timeout:   30 * time.Second,
+	//}, retryablehttpOptions)
 
 	return runner, nil
 }
@@ -415,7 +415,7 @@ func detectKeywords(headerContent []http.Header, indexContent []string, mf confi
 	return true
 }
 
-func (r *Runner) Do(req *retryablehttp.Request) (*Response, error) {
+func (r *Runner) Do(req *http.Request) (*Response, error) {
 	timeStart := time.Now()
 
 	var gzipRetry bool
