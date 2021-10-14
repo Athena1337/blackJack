@@ -3,17 +3,16 @@ package runner
 import (
 	"blackJack/config"
 	"testing"
-	"time"
 )
 
 func TestRunner(t *testing.T) {
-	options := &config.Options{
-		TargetUrl: "google.com",
-		TimeOut:   30 * time.Second,
-		Threads:   50,
-		RetryMax:  5,
-		IsDebug: true,
-	}
-	r, _ := New(options)
+	//options := config.DefaultOption
+	//r, _ := New(&options)
+	//r.CreateRunner()
+
+	options := config.DefaultOption
+	options.TargetUrl = ""
+	options.UrlFile = "C:/Users/sherd/Desktop/urls.txt"
+	r, _ := New(&options)
 	r.CreateRunner()
 }

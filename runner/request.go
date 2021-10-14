@@ -1,13 +1,11 @@
 package runner
 
 import (
-	"blackJack/log"
 	"blackJack/utils"
-	"crypto/tls"
+	"bytes"
 	pdhttputil "github.com/projectdiscovery/httputil"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -35,7 +33,7 @@ type Response struct {
 func (r *Runner) Request(method string, url string, redirect bool) (resp Response, err error) {
 	timeStart := time.Now()
 	var gzipRetry bool
-	request, err := r.NewRequest(method, url)
+	request, err := newRequest(method, url)
 get_response:
 	if err != nil {
 		return
@@ -51,6 +49,24 @@ get_response:
 		return
 	}
 
+	bodyBak, err := ioutil.ReadAll(do.Body)
+	do.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBak))
+
+	resp.Title, _ = utils.ExtractTitle(do)
+	// 拒绝one-shot, 还原Body, 后面还要ExtractTitle
+	do.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBak))
+
+	var respbody []byte
+	// websockets don't have a readable body
+	if do.StatusCode != http.StatusSwitchingProtocols {
+		respbody, err = ioutil.ReadAll(do.Body)
+		if err != nil {
+			return
+		}
+	}
+	// 拒绝one-shot, 还原Body, 后面还要DumpRaw
+	do.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBak))
+
 	rawHeader, rawResp, err := pdhttputil.DumpResponseHeadersAndRaw(do)
 	if err != nil {
 		// Edge case - some servers respond with gzip encoding header but uncompressed body, in this case the standard library configures the reader as gzip, triggering an error when read.
@@ -64,15 +80,6 @@ get_response:
 	resp.Raw = string(rawResp)
 	resp.RawHeaders = string(rawHeader)
 	resp.Headers = request.Header.Clone()
-
-	var respbody []byte
-	// websockets don't have a readable body
-	if do.StatusCode != http.StatusSwitchingProtocols {
-		respbody, err = ioutil.ReadAll(do.Body)
-		if err != nil {
-			return
-		}
-	}
 
 	err = do.Body.Close()
 	if err != nil {
@@ -106,24 +113,15 @@ get_response:
 
 	resp.Duration = time.Since(timeStart)
 
-	resp.Title, _ = utils.ExtractTitle(do)
 	return
 }
 
-// NewRequest from url
-func (r *Runner) NewRequest(method, targetURL string) (req *http.Request, err error) {
-	//req, err = retryablehttp.NewRequest(method, targetURL, nil)
-	req = &http.Request{}
-	req.Method = method
-	parse, err := url.Parse(targetURL)
-	if err != nil {
-		return nil, err
-	}
-	req.URL = parse
+// newRequest from url
+func newRequest(method, targetURL string) (req *http.Request, err error) {
+	req, err = http.NewRequest(method, targetURL, nil)
 	if err != nil {
 		return
 	}
-
 
 	// set default user agent
 	req.Header.Add("User-Agent", utils.GetUserAgent())
@@ -132,112 +130,4 @@ func (r *Runner) NewRequest(method, targetURL string) (req *http.Request, err er
 	// set default encoding to accept utf8
 	req.Header.Add("Accept-Charset", "utf-8")
 	return
-}
-
-/*
-Must be A
-*/
-func HttpReqWithNoRedirect(requrl string, timeOut int, proxy string) (http.Header, string, Result, error) {
-	var body string
-	result := &Result{
-		Raw:           "None",
-		URL:           "None",
-		Location:      "None", //
-		Title:         "None",
-		Host:          "None", //
-		ContentLength: 0,
-		StatusCode:    0,
-		VHost:         "noVhost", //
-		CDN:           "noCDN",   //
-		Technologies:  []string{},
-	}
-
-	var client http.Client
-
-	req, err := http.NewRequest("GET", requrl, nil) //nolint
-	if err != nil {
-		return nil, "", *result, err
-	}
-	req.Header.Set("User-Agent", utils.GetUserAgent())
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", *result, err
-	} else {
-		result.URL = requrl
-		result.Host = req.Host
-		result.StatusCode = resp.StatusCode
-		result.ContentLength = resp.ContentLength
-		result.Title, body = utils.ExtractTitle(resp)
-	}
-	defer resp.Body.Close() //nolint
-	return resp.Header, body, *result, nil
-}
-
-/*
-HttpReq 从 URL 中获取内容
-*/
-func HttpReq(requrl string, timeOut int, proxy string) (http.Header, string, Result, error) {
-	var body string
-	result := &Result{
-		Raw:           "None",
-		URL:           "None",
-		Location:      "None", //
-		Title:         "None",
-		Host:          "None", //
-		ContentLength: 0,
-		StatusCode:    0,
-		VHost:         "noVhost", //
-		CDN:           "noCDN",   //
-		Technologies:  []string{},
-	}
-	var client http.Client
-
-	if proxy != "" {
-		proxyUrl, err := url.Parse(proxy)
-		if err != nil {
-			log.Error("Proxy Url Can Not Identify, Droped")
-			client = http.Client{
-				Timeout: time.Second * time.Duration(timeOut),
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // don't check cert
-				},
-			}
-		} else {
-			client = http.Client{
-				Timeout: time.Second * time.Duration(timeOut),
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // don't check cert
-					Proxy:           http.ProxyURL(proxyUrl),
-				},
-			}
-		}
-	} else {
-		client = http.Client{
-			Timeout: time.Second * time.Duration(timeOut),
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // don't check cert
-			},
-		}
-	}
-
-	req, err := http.NewRequest("GET", requrl, nil) //nolint
-	if err != nil {
-		return nil, "", *result, err
-	}
-	req.Header.Set("User-Agent", utils.GetUserAgent())
-	req.Header.Set("Cookie", "rememberMe=6gYvaCGZaDXt1c0xwriXj/Uvz6g8OMT3VSaAK4WL0Fvqvkcm0nf3CfTwkWWTT4EjeSS")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", *result, err
-	} else {
-		result.URL = requrl
-		result.Host = req.Host
-		result.StatusCode = resp.StatusCode
-		result.ContentLength = resp.ContentLength
-		result.Title, body = utils.ExtractTitle(resp)
-	}
-	defer resp.Body.Close() //nolint
-	return resp.Header, body, *result, nil
 }

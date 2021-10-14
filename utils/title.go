@@ -93,7 +93,7 @@ func getTitleWithDom(r *Response) (*html.Node, error, []byte) {
 		}
 	}
 	body, err := ioutil.ReadAll(r.Body)
-	
+
 	if err != nil {
 		log.Error(fmt.Sprintf("Error reading body: %v", err))
 	}

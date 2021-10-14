@@ -5,12 +5,13 @@ import (
 	"blackJack/log"
 	. "blackJack/utils"
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"github.com/hashicorp/go-retryablehttp"
 	. "github.com/logrusorgru/aurora"
 	"github.com/projectdiscovery/cdncheck"
 	"github.com/projectdiscovery/fastdialer/fastdialer"
 	pdhttputil "github.com/projectdiscovery/httputil"
-	"github.com/projectdiscovery/retryablehttp-go"
 	"github.com/remeh/sizedwaitgroup"
 	"io/ioutil"
 	"net"
@@ -53,18 +54,21 @@ func New(options *config.Options) (*Runner, error) {
 	runner := &Runner{
 		options: options,
 	}
-	// 创建不允许重定向的http client
-	//var redirectFunc = func(_ *http.Request, _ []*http.Request) error {
-	//	// Tell the http client to not follow redirect
-	//	return http.ErrUseLastResponse
-	//}
 
-	var retryablehttpOptions = retryablehttp.DefaultOptionsSpraying
-	retryablehttpOptions.Timeout = options.TimeOut
-	retryablehttpOptions.RetryMax = options.RetryMax
+	// 创建不允许重定向的http client
+	var redirectFunc = func(_ *http.Request, _ []*http.Request) error {
+		// Tell the http client to not follow redirect
+		return http.ErrUseLastResponse
+	}
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = runner.options.RetryMax
 
 	transport := &http.Transport{
-		DialContext:         runner.Dialer.Dial,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 10 * time.Second,
+			DualStack: true,
+		}).DialContext,
 		MaxIdleConnsPerHost: -1,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, // don't check cert
@@ -72,27 +76,23 @@ func New(options *config.Options) (*Runner, error) {
 		DisableKeepAlives: true,
 	}
 
-	if options.Proxy != "" {
-		proxyUrl, err := url.Parse(options.Proxy)
+	if runner.options.Proxy != "" {
+		proxyUrl, err := url.Parse(runner.options.Proxy)
 		if err != nil {
 			log.Error("Proxy Url Can Not Identify, Droped")
-			return nil, err
 		} else {
 			transport.Proxy = http.ProxyURL(proxyUrl)
 		}
 	}
-	//
-	//runner.client = retryablehttp.NewWithHTTPClient(&http.Client{
-	//	Transport:     transport,
-	//	Timeout:       30 * time.Second,
-	//	CheckRedirect: redirectFunc,
-	//}, retryablehttpOptions)
-	//
-	//runner.noRedirectClient = retryablehttp.NewWithHTTPClient(&http.Client{
-	//	Transport: transport,
-	//	Timeout:   30 * time.Second,
-	//}, retryablehttpOptions)
 
+	runner.client = retryClient.StandardClient() // *http.Client
+	runner.client.Timeout = runner.options.TimeOut
+	runner.client.Transport = transport
+
+	runner.noRedirectClient = retryClient.StandardClient() // *http.Client
+	runner.noRedirectClient.CheckRedirect = redirectFunc
+	runner.noRedirectClient.Timeout = runner.options.TimeOut
+	runner.noRedirectClient.Transport = transport
 	return runner, nil
 }
 
@@ -129,7 +129,7 @@ func (r *Runner) generate(output chan Result, wg *sizedwaitgroup.SizedWaitGroup)
 	if r.options.TargetUrl != "" {
 		log.Info(fmt.Sprintf("single target: %s", r.options.TargetUrl))
 		wg.Add()
-		go r.process(output, r.options, r.options.TargetUrl, wg)
+		go r.process(output, r.options.TargetUrl, wg)
 	} else {
 		urls, err := ReadFile(r.options.UrlFile)
 		if err != nil {
@@ -138,27 +138,27 @@ func (r *Runner) generate(output chan Result, wg *sizedwaitgroup.SizedWaitGroup)
 			log.Info(fmt.Sprintf("Read %d's url totaly", len(urls)))
 			for _, u := range urls {
 				wg.Add()
-				go r.process(output, r.options, u, wg)
+				go r.process(output, u, wg)
 			}
 		}
 	}
 }
 
 // process 请求获取每个url内容用于后续分析
-func (r *Runner) process(output chan Result, ret *config.Options, url string, wg *sizedwaitgroup.SizedWaitGroup) () {
+func (r *Runner) process(output chan Result, url string, wg *sizedwaitgroup.SizedWaitGroup) () {
 	defer wg.Done()
 	options := &config.Options{}
-	proxy := ret.Proxy
 	origProtocol := options.OrigProtocol
-	log.Debug(options.OrigProtocol)
 	log.Debug(url)
-	faviconHash, headerContent, urlContent, resultContent := r.scan(url, proxy, origProtocol)
-	output <- analyze(faviconHash, headerContent, urlContent, resultContent)
+	faviconHash, headerContent, urlContent, resultContent, err := r.scan(url, origProtocol)
+	if err == nil {
+		output <- analyze(faviconHash, headerContent, urlContent, resultContent)
+	}
 }
 
 // scan 扫描单个url
 // return icon指纹 响应头列表 响应体列表 结果样例
-func (r *Runner) scan(url string, proxy string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result) {
+func (r *Runner) scan(url string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, err error) {
 	var indexUrl string
 	var faviconUrl string
 	var errorUrl string
@@ -184,10 +184,11 @@ func (r *Runner) scan(url string, proxy string, origProtocol string) (faviconHas
 	log.Debug("got target: " + url)
 	if !strings.Contains(url, ".") {
 		log.Error("no a valid domain or ip")
-		//return Result{}, errors.New("no a valid domain or ip")
+		err = errors.New("no a valid domain or ip")
+		return
 	}
 	targetUrl := url
-	prot := "https"
+	prot := "https" // have no protocol, use https default
 	retried := false
 retry:
 	if origProtocol == "https" {
@@ -200,7 +201,6 @@ retry:
 	if retried && origProtocol == "https" {
 		prot = "http"
 	}
-	log.Debug(origProtocol)
 
 	indexUrl = fmt.Sprintf("%s://%s", prot, targetUrl)
 	faviconUrl = fmt.Sprintf("%s://%s/%s", prot, targetUrl, "favicon.ico")
@@ -216,16 +216,20 @@ retry:
 	// 获得网站主页内容和不存在页面的内容
 	for k, v := range urls { //range returns both the index and value
 		log.Debug("GetContent: " + v)
-		resp, err := r.Request("GET", v, true)
+		resp, errs := r.Request("GET", v, true)
 		// 如果是https，则拥有一次重试机会，避免协议不匹配问题
-		if err != nil && !retried && origProtocol == "https" {
+		if errs != nil && !retried && origProtocol == "https" {
 			log.Debug(fmt.Sprintf("request url %s error", v))
 			retried = true
 			goto retry
+		}
+		if errs != nil && retried || err != nil && origProtocol == "http" || resp.ContentLength == 0{
+			err = errors.New("i/o timeout")
+			return
 		} else {
 			urlContent = append(urlContent, string(resp.Data))
 			headerContent = append(headerContent, resp.Headers)
-			if k == 0 {
+			if k == 0{
 				resultContent = &Result{
 					Raw:           resp.Raw,
 					URL:           v,
@@ -236,6 +240,7 @@ retry:
 					StatusCode:    resp.StatusCode,
 					VHost:         "noVhost", //
 					CDN:           "noCDN",   //
+					Finger:        []string{},
 					Technologies:  []string{},
 				}
 			}
@@ -282,9 +287,6 @@ func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGr
 		var f *os.File
 		var finger string
 		var technology string
-		if resp.URL == "None" {
-			return
-		}
 		for k, v := range resp.Finger {
 			if k == 0 {
 				finger = v
@@ -303,6 +305,7 @@ func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGr
 
 		row := fmt.Sprintf("[%s]", Bold(Green(resp.URL)))
 		row += fmt.Sprintf("[%d]", Bold(Cyan(resp.StatusCode)))
+		row += fmt.Sprintf("[%d]", Bold(Cyan(resp.ContentLength)))
 		row += fmt.Sprintf("[%s]", Bold(Magenta(resp.Title)))
 		row += fmt.Sprintf("[%s]", Bold(Red(finger)))
 		row += fmt.Sprintf("[%s]", technology)
@@ -372,6 +375,9 @@ func analyze(faviconHash string, headerContent []http.Header, indexContent []str
 }
 
 func detect(name string, faviconHash string, headerContent []http.Header, indexContent []string, mf config.MetaFinger) (rs []string) {
+	if len(headerContent) == 0 && len(indexContent) == 0 {
+		return
+	}
 	if mf.Method == "keyword" {
 		flag := detectKeywords(headerContent, indexContent, mf)
 		if flag && !StringArrayContains(rs, name) {
