@@ -151,7 +151,19 @@ func (r *Runner) process(output chan Result, url string, wg *sizedwaitgroup.Size
 	origProtocol := options.OrigProtocol
 	log.Debug(url)
 	faviconHash, headerContent, urlContent, resultContent, err := r.scan(url, origProtocol)
-	if err == nil {
+	if err != nil{
+		return
+	}else {
+		log.Debug(resultContent.Title)
+		if (resultContent.Title == ""){
+			//
+			title,err := RequestByChrome(url)
+			if err != nil{
+				resultContent.Title = title
+				log.Warn(err.Error())
+			}
+
+		}
 		output <- analyze(faviconHash, headerContent, urlContent, resultContent)
 	}
 }

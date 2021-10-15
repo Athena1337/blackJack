@@ -2,6 +2,7 @@ package runner
 
 import (
 	"blackJack/config"
+	"blackJack/log"
 	"testing"
 )
 
@@ -28,4 +29,12 @@ func TestHttpReq(t *testing.T) {
 	if err != nil || resp.StatusCode != 200 || resp.Title != "必应"{
 		t.Errorf("HttpReq test error")
 	}
+}
+
+func TestRequestByChrome(t *testing.T) {
+	chrome, err := RequestByChrome("https://mmwater.mmzqoa.net/")
+	if err != nil {
+		return
+	}
+	log.Debug(chrome)
 }

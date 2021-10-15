@@ -3,8 +3,12 @@ package runner
 import (
 	"blackJack/utils"
 	"bytes"
+	"context"
+	"fmt"
+	"github.com/chromedp/chromedp"
 	pdhttputil "github.com/projectdiscovery/httputil"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -130,8 +134,31 @@ func newRequest(method, targetURL string) (req *http.Request, err error) {
 	// set default user agent
 	req.Header.Add("User-Agent", utils.GetUserAgent())
 	// 检测shiro指纹
-	req.Header.Add("Cookie", "rememberMe=6gYvaCGZaDXt1c0xwriXj/Uvz6g8OMT3VSaAK4WL0Fvqvkcm0nf3CfTwkWWTT4EjeSS")
+	req.Header.Add("Cookie", fmt.Sprintf("rememberMe=%s",utils.RandStringBytes(67)))
 	// set default encoding to accept utf8
 	req.Header.Add("Accept-Charset", "utf-8")
+	return
+}
+
+func RequestByChrome(url string)(title string, err error){
+	// create context
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("ignore-certificate-errors", "1"),
+	)
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
+	defer cancel()
+
+	// run task list
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		chromedp.Sleep(10000),
+		chromedp.Evaluate(`document.title`, &title),
+	)
+	if err != nil {
+		return
+	}
+	log.Println(strings.TrimSpace(title))
 	return
 }
