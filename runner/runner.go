@@ -157,6 +157,11 @@ func (r *Runner) process(output chan Result, url string, wg *sizedwaitgroup.Size
 }
 
 // scan 扫描单个url
+// 对单个目标
+// 1. 请求主页一次
+// 2. 不允许重定向地请求主页一次
+// 3. 请求icon一次
+// 4. 请求不存在的页面一次
 // return icon指纹 响应头列表 响应体列表 结果样例
 func (r *Runner) scan(url string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, err error) {
 	var indexUrl string
@@ -329,12 +334,12 @@ func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGr
 		}
 
 		if resp.VHost != "noVhost" {
-			row += fmt.Sprintf("[%s]", resp.VHost)
-			raw += fmt.Sprintf("[%s]", resp.VHost)
+			row += fmt.Sprintf("[%s] ", resp.VHost)
+			raw += fmt.Sprintf("[%s] ", resp.VHost)
 		}
 		if resp.CDN != "noCDN" {
-			row += fmt.Sprintf("[%s]", resp.CDN)
-			raw += fmt.Sprintf("[%s]", resp.CDN)
+			row += fmt.Sprintf("[%s] ", resp.CDN)
+			raw += fmt.Sprintf("[%s] ", resp.CDN)
 		}
 		fmt.Println(row)
 

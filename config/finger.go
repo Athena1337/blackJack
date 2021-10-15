@@ -38,7 +38,8 @@ func getCurrentAbPathByCaller() string {
 
 func LoadFinger() (error, Config) {
 	var configs Config
-	filePath := getCurrentAbPathByCaller()
+	//filePath := getCurrentAbPathByCaller()
+	filePath := "C:\\Users\\user\\Desktop\\blackJack"
 	jsonPath := path.Join(filePath, "finger.json")
 	dat, err := ioutil.ReadFile(jsonPath)
 
