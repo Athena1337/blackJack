@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 )
 
-func (r *Runner) GetFaviconHash(url string) (hash string,err error) {
+func (r *Runner) GetFaviconHash(url string) (hash string, err error) {
 	request, err := newRequest("GET", url)
 	if err != nil {
 		return

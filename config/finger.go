@@ -18,7 +18,7 @@ type MetaFinger struct {
 }
 
 type Finger struct {
-	Name string
+	Name        string
 	Fingerprint []MetaFinger
 }
 
@@ -36,30 +36,29 @@ func getCurrentAbPathByCaller() string {
 	return exPath
 }
 
-func LoadFinger() (error,Config){
+func LoadFinger() (error, Config) {
 	var configs Config
 	filePath := getCurrentAbPathByCaller()
 	jsonPath := path.Join(filePath, "finger.json")
 	dat, err := ioutil.ReadFile(jsonPath)
 
-	if err != nil{
-		Fatal(fmt.Sprintf("Cann't Read Config File: %s %s",filePath,jsonPath))
+	if err != nil {
+		Fatal(fmt.Sprintf("Cann't Read Config File: %s %s", filePath, jsonPath))
 		return err, configs
 	}
 	err = json.Unmarshal(dat, &configs)
 	if err != nil {
-		Error(fmt.Sprintf("%s",err))
+		Error(fmt.Sprintf("%s", err))
 		return err, configs
 	}
 	a := 0
-	for _,k := range configs.Rules{
+	for _, k := range configs.Rules {
 		a = a + len(k.Fingerprint)
 	}
 	Info(fmt.Sprintf("Totaly load finger %d 's", a))
 	return nil, configs
 }
 
-func SetEnv(isDebug bool){
+func SetEnv(isDebug bool) {
 	DEBUG = isDebug
 }
-

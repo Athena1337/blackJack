@@ -49,4 +49,3 @@ func CSPGrab(r *http.Response) *CSPData {
 func isPotentialDomain(s string) bool {
 	return strings.Contains(s, ".") || strings.HasPrefix(s, "http")
 }
-

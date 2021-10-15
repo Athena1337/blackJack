@@ -13,19 +13,19 @@ func main() {
 
 	var err error
 	r, err := runner.New(options)
-	if err != nil{
+	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	if options.FaviconUrl != ""{
+	if options.FaviconUrl != "" {
 		// 分析网站icon指纹
 		faviconHash, err := r.GetFaviconHash(options.FaviconUrl)
-		if err != nil && faviconHash != ""{
+		if err != nil && faviconHash != "" {
 			log.Info(fmt.Sprintf("faviconHash: %s", faviconHash))
-		}else{
-			log.Info(fmt.Sprintf("%s",err))
+		} else {
+			log.Info(fmt.Sprintf("%s", err))
 		}
-	}else{
+	} else {
 		// 创建指纹扫描任务
 		r.CreateRunner()
 	}

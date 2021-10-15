@@ -223,26 +223,14 @@ retry:
 			retried = true
 			goto retry
 		}
-		if errs != nil && retried || err != nil && origProtocol == "http" || resp.ContentLength == 0{
+		if errs != nil && retried || err != nil && origProtocol == "http" || resp.ContentLength == 0 {
 			err = errors.New("i/o timeout")
 			return
 		} else {
 			urlContent = append(urlContent, string(resp.Data))
 			headerContent = append(headerContent, resp.Headers)
-			if k == 0{
-				resultContent = &Result{
-					Raw:           resp.Raw,
-					URL:           v,
-					Location:      "None", //
-					Title:         resp.Title,
-					Host:          resp.Host, //
-					ContentLength: int64(resp.ContentLength),
-					StatusCode:    resp.StatusCode,
-					VHost:         "noVhost", //
-					CDN:           "noCDN",   //
-					Finger:        []string{},
-					Technologies:  []string{},
-				}
+			if k == 0 {
+				resultContent = makeResultTemplate(resp)
 			}
 		}
 	}
@@ -280,6 +268,26 @@ retry:
 	return
 }
 
+func makeResultTemplate(resp Response) (r *Result) {
+	r = &Result{
+		Raw:           resp.Raw,
+		URL:           resp.URL.String(),
+		Location:      "None", //
+		Title:         resp.Title,
+		Host:          resp.Host, //
+		ContentLength: int64(resp.ContentLength),
+		StatusCode:    resp.StatusCode,
+		VHost:         "noVhost", //
+		CDN:           "noCDN",   //
+		Finger:        []string{},
+		Technologies:  []string{},
+	}
+	if resp.Title == "" && resp.ContentLength < 120 {
+		r.Title = string(resp.Data)
+	}
+	return
+}
+
 // output 输出处理
 func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGroup) {
 	defer wgoutput.Done()
@@ -303,16 +311,20 @@ func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGr
 			}
 		}
 
-		row := fmt.Sprintf("[%s]", Bold(Green(resp.URL)))
-		row += fmt.Sprintf("[%d]", Bold(Cyan(resp.StatusCode)))
-		row += fmt.Sprintf("[%d]", Bold(Cyan(resp.ContentLength)))
-		row += fmt.Sprintf("[%s]", Bold(Magenta(resp.Title)))
-		row += fmt.Sprintf("[%s]", Bold(Red(finger)))
-		row += fmt.Sprintf("[%s]", technology)
+		row := fmt.Sprintf("%s ", Bold(resp.URL))
+		row += fmt.Sprintf("[%d] ", Bold(Magenta(resp.StatusCode)))
+		row += fmt.Sprintf("[%d] ", Cyan(resp.ContentLength))
+		row += fmt.Sprintf("[%s] ", Bold(Cyan(resp.Title)))
+		raw := fmt.Sprintf("%s [%d]  [%d]  [%s] ", resp.URL, resp.StatusCode, resp.ContentLength, resp.Title)
 
-		raw := fmt.Sprintf("[%s] [%d] [%s] [%s] [%s]", resp.URL, resp.StatusCode, resp.Title, finger, technology)
+		if technology != "" {
+			row += fmt.Sprintf("[%s] ", technology)
+			raw += fmt.Sprintf("[%s] ", technology)
+		}
 
 		if finger != "" {
+			row += fmt.Sprintf("[%s] ", Bold(Red(finger)))
+			raw += fmt.Sprintf("[%s] ", finger)
 			focusOn = append(focusOn, row)
 		}
 
@@ -324,8 +336,6 @@ func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGr
 			row += fmt.Sprintf("[%s]", resp.CDN)
 			raw += fmt.Sprintf("[%s]", resp.CDN)
 		}
-
-		//row = fmt.Sprintf("[%s] [%d] [%s] [%s] [%s] [%s] [%s]", Bold(Green(resp.URL)), Bold(Cyan(resp.StatusCode)), Bold(Magenta(resp.Title)), Bold(Red(finger)), resp.Host, resp.VHost, resp.CDN)
 		fmt.Println(row)
 
 		if r.options.Output != "" {

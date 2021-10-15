@@ -6,6 +6,7 @@ import (
 	pdhttputil "github.com/projectdiscovery/httputil"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ type Response struct {
 	StatusCode    int
 	Headers       map[string][]string
 	Host          string
+	URL           *url.URL
 	Title         string
 	Data          []byte
 	ContentLength int
@@ -39,9 +41,9 @@ get_response:
 		return
 	}
 	var do *http.Response
-	if redirect{
+	if redirect {
 		do, err = r.client.Do(request)
-	}else{
+	} else {
 		do, err = r.noRedirectClient.Do(request)
 	}
 
@@ -64,7 +66,7 @@ get_response:
 			return
 		}
 	}
-	// 拒绝one-shot, 还原Body, 后面还要DumpRaw
+	// 后面还要DumpRaw
 	do.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBak))
 
 	rawHeader, rawResp, err := pdhttputil.DumpResponseHeadersAndRaw(do)
@@ -79,7 +81,9 @@ get_response:
 	}
 	resp.Raw = string(rawResp)
 	resp.RawHeaders = string(rawHeader)
-	resp.Headers = request.Header.Clone()
+	resp.Headers = do.Header.Clone()
+	resp.Host = request.Host
+	resp.URL = request.URL
 
 	err = do.Body.Close()
 	if err != nil {

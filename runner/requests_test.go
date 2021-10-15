@@ -29,4 +29,3 @@ func TestHttpReq(t *testing.T) {
 		t.Errorf("HttpReq test error")
 	}
 }
-
