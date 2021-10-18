@@ -63,6 +63,12 @@ Usage of blackJack.exe:
 + 重构优化部分处理模块
 + 更新指纹1833条，合计2581条
 
+### V1.0-beta3
++ 更换底层HTTP请求库
++ 重构并发模块，减少开销
++ 提高稳定性
++ 速度提升500%
+
 ## Thanks
 
 探测功能的灵感和基本指纹库来自[EHole](https://github.com/EdgeSecurityTeam/EHole)

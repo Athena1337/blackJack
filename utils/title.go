@@ -15,13 +15,17 @@ import (
 var (
 	cutset                       = "\n\t\v\f\r"
 	reTitle       *regexp.Regexp = regexp.MustCompile(`(?im)<\s*title.*>(.*?)<\s*/\s*title>`)
+	reTitle2      *regexp.Regexp = regexp.MustCompile(`document\.title=(.+);`)
 	reContentType *regexp.Regexp = regexp.MustCompile(`(?im)\s*charset="(.*?)"|charset=(.*?)"\s*`)
 )
 
 // ExtractTitle from a response
 func ExtractTitle(r *Response) (title string, body_content string) {
+	bodyBak, err := ioutil.ReadAll(r.Body)
 	// Try to parse the DOM
-	titleDom, err , body := getTitleWithDom(r)
+	titleDom, err, body := getTitleWithDom(r)
+	// fix body for re extract title
+	r.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBak))
 	// convert io.ReadCloser to string
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(r.Body)
@@ -38,14 +42,25 @@ func ExtractTitle(r *Response) (title string, body_content string) {
 	}
 
 	title = html.UnescapeString(trimTitleTags(title))
-
 	// remove unwanted chars
 	title = strings.TrimSpace(strings.Trim(title, cutset))
 
+	// support overwrite title with js
+	if title == ""{
+		for _, match := range reTitle2.FindAllString(newStr, -1) {
+			title = match
+			break
+		}
+		title = strings.Replace(title,"document.title","",-1)
+		title = strings.Replace(title,"=","",-1)
+		title = strings.Replace(title,"'","",-1)
+		title = strings.Replace(title,";","",-1)
+		title = strings.Replace(title,"\"","",-1)
+	}
+
 	// Non UTF-8
 	contentTypes := r.Header.Values("Content-Type")
-	//log.Debug("detect contentTypes: "+StringArrayToString(contentTypes), true)
-	if len(contentTypes)>0{
+	if len(contentTypes) > 0 {
 		contentType := strings.Join(contentTypes, ";")
 
 		// special cases
@@ -93,7 +108,7 @@ func getTitleWithDom(r *Response) (*html.Node, error, []byte) {
 		}
 	}
 	body, err := ioutil.ReadAll(r.Body)
-	
+
 	if err != nil {
 		log.Error(fmt.Sprintf("Error reading body: %v", err))
 	}

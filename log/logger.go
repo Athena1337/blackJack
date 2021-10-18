@@ -1,32 +1,31 @@
 package log
 
 import (
-	"fmt"
-	. "github.com/logrusorgru/aurora"
+	"github.com/pterm/pterm"
 	"os"
 )
 
 var DEBUG bool
 
 func Fatal(msg string){
-	fmt.Println(Bold(Red("[-] "+msg)))
+	pterm.Println(pterm.Red("[x] " + msg))
 	os.Exit(0)
 }
 
 func Error(msg string){
-	fmt.Println(Red("[-] "+msg))
+	pterm.Println(pterm.Red("[-] " + msg))
 }
 
 func Warn(msg string){
-	fmt.Println(Yellow("[*] "+msg))
+	pterm.Println(pterm.Yellow("[*] " + msg))
 }
 
 func Info(msg string){
-	fmt.Println(Blue("[+] "+msg))
+	pterm.Println(pterm.Blue("[+] " + msg))
 }
 
 func Debug(msg string){
 	if DEBUG{
-		fmt.Println(Green("[+] "+msg))
+		pterm.Println(pterm.Green("[+] " + msg))
 	}
 }
