@@ -294,7 +294,8 @@ func makeResultTemplate(resp Response) (r *Result) {
 		Technologies:  []string{},
 	}
 	if resp.Title == "" && resp.ContentLength < 120 {
-		r.Title = string(resp.Data)
+		r.Title = strings.Replace(string(resp.Data), "\n", "", -1)
+		r.Title = strings.Replace(r.Title, " ", "",-1)
 	}
 	return
 }
@@ -302,8 +303,13 @@ func makeResultTemplate(resp Response) (r *Result) {
 // output 输出处理
 func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGroup) {
 	defer wgoutput.Done()
+	if r.options.Output != "" && FileExists(r.options.Output){
+		err := os.Remove(r.options.Output)
+		if  err != nil {
+			log.Fatal("already exists output file and Could not removed it.")
+		}
+	}
 	for resp := range output {
-		var f *os.File
 		var finger string
 		var technology string
 		for k, v := range resp.Finger {
@@ -346,17 +352,17 @@ func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGr
 			row += fmt.Sprintf("[%s] ", resp.CDN)
 			raw += fmt.Sprintf("[%s] ", resp.CDN)
 		}
-		pterm.DefaultBasicText.Println(row)
-
 		if r.options.Output != "" {
-			var err error
-			f, err = os.Create(r.options.Output)
+			f, err := os.OpenFile(r.options.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 			if err != nil {
 				log.Fatal(fmt.Sprintf("Could not create output file '%s': %s", r.options.Output, err))
 			}
-			f.WriteString(raw + "\n")
-			defer f.Close() //nolint
+			_, err = f.WriteString(raw + "\n")
+			if err != nil {
+				log.Error(err.Error())
+			}
 		}
+		pterm.DefaultBasicText.Print(row + "\n")
 	}
 }
 
