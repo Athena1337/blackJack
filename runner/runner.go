@@ -122,10 +122,28 @@ func (r *Runner) CreateRunner() {
 	close(output)
 	wgoutput.Wait()
 
-	if len(focusOn) != 0 {
-		log.Info(pterm.NewStyle(pterm.Bold).Sprintf("%s", "重点资产: "))
-		for _, f := range focusOn {
-			fmt.Println(f)
+	// 将重点资产写入输出文件
+	if r.options.Output != "" && len(focusOn) != 0 {
+		f, err := os.OpenFile(r.options.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Could not create output file '%s': %s", r.options.Output, err))
+		}
+		defer func(f *os.File) {
+			err := f.Close()
+			if err != nil {
+				log.Error(err.Error())
+			}
+		}(f)
+		_, err = f.WriteString(pterm.NewStyle(pterm.Bold).Sprintf("%s", "重点资产: ") + "\n")
+		if err != nil {
+			log.Error(err.Error())
+		}
+
+		for _, fo := range focusOn {
+			_, err := f.WriteString(fo + "\n")
+			if err != nil {
+				continue
+			}
 		}
 	}
 }
