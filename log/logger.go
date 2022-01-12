@@ -1,14 +1,15 @@
 package log
 
 import (
+	"fmt"
 	"github.com/pterm/pterm"
 	"os"
 )
 
 var DEBUG bool
 
-func Fatal(msg string){
-	pterm.Println(pterm.Red("[x] " + msg))
+func Fatal(msg interface{}){
+	pterm.Println(pterm.Red(fmt.Sprintf("[x] %v",msg)))
 	os.Exit(0)
 }
 

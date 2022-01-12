@@ -13,6 +13,7 @@ require (
 	github.com/pterm/pterm v0.12.31
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/twmb/murmur3 v1.1.6
+	github.com/urfave/cli/v2 v2.3.0
 	golang.org/x/net v0.0.0-20211015210444-4f30a5c0130f
 	golang.org/x/text v0.3.7
 )

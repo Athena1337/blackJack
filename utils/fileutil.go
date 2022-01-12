@@ -89,7 +89,7 @@ func ListFilesWithPattern(rootpattern string) ([]string, error) {
 	return files, err
 }
 
-// FileNameIsGlob check if the filanem is a pattern
+// FileNameIsGlob check if the filename is a pattern
 func FileNameIsGlob(pattern string) bool {
 	_, err := regexp.Compile(pattern)
 	return err == nil

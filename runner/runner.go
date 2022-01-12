@@ -134,7 +134,7 @@ func (r *Runner) CreateRunner() {
 				log.Error(err.Error())
 			}
 		}(f)
-		_, err = f.WriteString(pterm.NewStyle(pterm.Bold).Sprintf("%s", "重点资产: ") + "\n")
+		_, err = f.WriteString(fmt.Sprintf("%s", "重点资产: \n"))
 		if err != nil {
 			log.Error(err.Error())
 		}
