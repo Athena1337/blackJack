@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/urfave/cli/v2"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -40,26 +41,35 @@ func Action(c *cli.Context) error {
 		options.OrigProtocol = "https||http"
 	}
 
-	if c.String("i") != "" && c.String("u") != ""{
-		// 分析网站icon指纹
-		faviconHash, err := r.GetFaviconHash(options.FaviconUrl)
-		if err != nil && faviconHash != "" {
-			log.Info(fmt.Sprintf("faviconHash: %s", faviconHash))
-		} else {
-			log.Info(fmt.Sprintf("%s", err))
-		}
-	}
-
 	if c.String("l") != "" && !utils.FileExists(c.String("l")) {
 		log.Fatal("Url File does not exist!")
 	}
 
-	if c.String("u") == "" && c.String("l") == "" {
+	if c.String("u") == "" && c.String("l") == "" && c.String("i") == ""{
 		cli.ShowAppHelp(c)
 	}else if c.String("u") != ""{
 		r.CreateRunner()
 	}else if c.String("l") != ""{
 		r.CreateRunner()
+	}else if c.String("i") != ""{
+		// 分析网站icon指纹
+		if !strings.Contains(options.FaviconUrl, "http"){
+			options.FaviconUrl = fmt.Sprintf("%s://%s", "https",options.FaviconUrl)
+		}
+		if !strings.Contains(options.FaviconUrl, "favicon.ico"){
+			options.FaviconUrl = fmt.Sprintf("%s/%s", options.FaviconUrl, "favicon.ico")
+		}
+		faviconHash, err := r.GetFaviconHash(options.FaviconUrl)
+		if err !=nil && strings.Contains(options.FaviconUrl, "https"){
+			err = nil
+			options.FaviconUrl = strings.Replace(options.FaviconUrl, "https", "http", 1)
+			faviconHash, err = r.GetFaviconHash(options.FaviconUrl)
+		}
+		if err == nil && faviconHash != "" {
+			log.Info(fmt.Sprintf("url: %s, faviconHash: %s", options.FaviconUrl, faviconHash))
+		} else {
+			log.Error(fmt.Sprintf("%s", err))
+		}
 	}
 	return nil
 }

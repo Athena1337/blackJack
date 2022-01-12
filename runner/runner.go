@@ -177,6 +177,7 @@ func (r *Runner) process(output chan Result, url string, wg *sizedwaitgroup.Size
 	faviconHash, headerContent, urlContent, resultContent, err := r.scan(url, origProtocol)
 	if err == nil{
 		output <- analyze(faviconHash, headerContent, urlContent, resultContent)
+		//
 	}
 }
 
