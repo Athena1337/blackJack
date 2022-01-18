@@ -73,7 +73,6 @@ func LoadFile(filename string) (lines []string) {
 	for s.Scan() {
 		lines = append(lines, s.Text())
 	}
-
 	return
 }
 
@@ -93,4 +92,14 @@ func ListFilesWithPattern(rootpattern string) ([]string, error) {
 func FileNameIsGlob(pattern string) bool {
 	_, err := regexp.Compile(pattern)
 	return err == nil
+}
+
+// GetCurrentAbPathByCaller 获取当前执行文件绝对路径
+func GetCurrentAbPathByCaller() (exPath string, err error) {
+	ex, err := os.Executable()
+	if err != nil {
+		return
+	}
+	exPath = filepath.Dir(ex)
+	return
 }

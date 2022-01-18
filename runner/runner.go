@@ -1,9 +1,9 @@
 package runner
 
 import (
+	"blackJack/brute"
 	"blackJack/config"
-	"blackJack/log"
-	. "blackJack/utils"
+	"blackJack/utils"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -13,6 +13,7 @@ import (
 	pdhttputil "github.com/projectdiscovery/httputil"
 	"github.com/pterm/pterm"
 	"github.com/remeh/sizedwaitgroup"
+	log "github.com/t43Wiu6/tlog"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -47,6 +48,7 @@ type Result struct {
 	VHost         string   `json:"vhost,omitempty"`
 	CDN           string   `json:"cdn,omitempty"`
 	Finger        []string `json:"finger,omitempty"`
+	DirBruteRs    []string `json:"dir"`
 	Technologies  []string `json:"technologies,omitempty"`
 }
 
@@ -100,7 +102,7 @@ func New(options *config.Options) (*Runner, error) {
 func (r *Runner) CreateRunner() {
 	var err error
 	CONFIG, err = config.LoadFinger()
-	if err != nil{
+	if err != nil {
 		errs := config.DownloadFinger()
 		if errs != nil {
 			log.Fatal("unable to download automatically")
@@ -115,7 +117,7 @@ func (r *Runner) CreateRunner() {
 	go r.output(output, &wgoutput)
 
 	// runner
-	log.Warn(fmt.Sprintf("Default threads: %d", r.options.Threads))
+	log.Warnf("Default threads: %d", r.options.Threads)
 	wg := sizedwaitgroup.New(r.options.Threads) // set threads , 50 by default
 	r.generate(output, &wg)
 	wg.Wait()
@@ -126,7 +128,7 @@ func (r *Runner) CreateRunner() {
 	if r.options.Output != "" && len(focusOn) != 0 {
 		f, err := os.OpenFile(r.options.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 		if err != nil {
-			log.Fatal(fmt.Sprintf("Could not create output file '%s': %s", r.options.Output, err))
+			log.Fatalf("Could not create output file '%s': %s", r.options.Output, err)
 		}
 		defer func(f *os.File) {
 			err := f.Close()
@@ -151,15 +153,15 @@ func (r *Runner) CreateRunner() {
 // generate all target url
 func (r *Runner) generate(output chan Result, wg *sizedwaitgroup.SizedWaitGroup) {
 	if r.options.TargetUrl != "" {
-		log.Info(fmt.Sprintf("single target: %s", r.options.TargetUrl))
+		log.Infof("single target: %s", r.options.TargetUrl)
 		wg.Add()
 		go r.process(output, r.options.TargetUrl, wg)
 	} else {
-		urls, err := ReadFile(r.options.UrlFile)
+		urls, err := utils.ReadFile(r.options.UrlFile)
 		if err != nil {
-			log.Fatal("Cann't read url file")
+			log.Fatal("Can't read url file")
 		} else {
-			log.Info(fmt.Sprintf("Read %d's url totaly", len(urls)))
+			log.Infof("Read %d's url", len(urls))
 			for _, u := range urls {
 				wg.Add()
 				go r.process(output, u, wg)
@@ -174,8 +176,14 @@ func (r *Runner) process(output chan Result, url string, wg *sizedwaitgroup.Size
 	options := &config.Options{}
 	origProtocol := options.OrigProtocol
 	log.Debug(url)
-	faviconHash, headerContent, urlContent, resultContent, err := r.scan(url, origProtocol)
-	if err == nil{
+	faviconHash, headerContent, urlContent, resultContent, dirbrs, err := r.scan(url, origProtocol)
+	if err != nil {
+		return
+	}
+	if r.options.Output != "" && r.options.EnableDirBrute{
+		rs := analyze(faviconHash, headerContent, urlContent, resultContent)
+		rs.DirBruteRs = dirbrs
+	}else {
 		output <- analyze(faviconHash, headerContent, urlContent, resultContent)
 		//
 	}
@@ -188,22 +196,22 @@ func (r *Runner) process(output chan Result, url string, wg *sizedwaitgroup.Size
 // 3. 请求icon一次
 // 4. 请求不存在的页面一次
 // return icon指纹 响应头列表 响应体列表 结果样例
-func (r *Runner) scan(url string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, err error) {
+func (r *Runner) scan(url string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, dirbResult []string, err error) {
 	var indexUrl string
 	var faviconUrl string
 	var errorUrl string
 	var urls []string
 
 	// 适配协议
-	if ValidateUrl(url) == "" {
+	if utils.ValidateUrl(url) == "" {
 		log.Fatal("unable to identify url")
 	}
-	if ValidateUrl(url) == "http" {
+	if utils.ValidateUrl(url) == "http" {
 		url = strings.Split(url, "://")[1]
 		log.Debug("validate rs is http")
 		origProtocol = "http"
 	}
-	if ValidateUrl(url) == "https" {
+	if utils.ValidateUrl(url) == "https" {
 		url = strings.Split(url, "://")[1]
 		log.Debug("validate rs is https")
 		origProtocol = "https"
@@ -211,7 +219,7 @@ func (r *Runner) scan(url string, origProtocol string) (faviconHash string, head
 	if strings.HasSuffix(url, "/") {
 		url = strings.Split(url, "/")[0]
 	}
-	log.Debug("got target: " + url)
+	log.Debugf("got target: %s", url)
 	if !strings.Contains(url, ".") {
 		log.Error("no a valid domain or ip")
 		err = errors.New("no a valid domain or ip")
@@ -234,22 +242,22 @@ retry:
 
 	indexUrl = fmt.Sprintf("%s://%s", prot, targetUrl)
 	faviconUrl = fmt.Sprintf("%s://%s/%s", prot, targetUrl, "favicon.ico")
-	errorUrl = fmt.Sprintf("%s://%s/%s", prot, targetUrl, RandStringBytes(20))
+	errorUrl = fmt.Sprintf("%s://%s/%s", prot, targetUrl, utils.RandStringBytes(20))
 
-	if ValidateUrl(indexUrl) != "" && !retried {
+	if utils.ValidateUrl(indexUrl) != "" && !retried {
 		urls = append(urls, indexUrl)
 	}
-	if ValidateUrl(errorUrl) != "" && !retried {
+	if utils.ValidateUrl(errorUrl) != "" && !retried {
 		urls = append(urls, errorUrl)
 	}
 
 	// 获得网站主页内容和不存在页面的内容
 	for k, v := range urls { //range returns both the index and value
-		log.Debug("GetContent: " + v)
+		log.Debugf("GetContent: %v", v)
 		resp, errs := r.Request("GET", v, true)
 		// 如果是https，则拥有一次重试机会，避免协议不匹配问题
 		if errs != nil && !retried && origProtocol == "https" {
-			log.Debug(fmt.Sprintf("request url %s error", v))
+			log.Debugf("request url %s error", v)
 			retried = true
 			goto retry
 		}
@@ -267,33 +275,44 @@ retry:
 
 	// 以非重定向的方式获得网站内容
 	// 同时分析两种情况，避免重定向跳转导致获得失败，避免反向代理和CDN导致收集面缩小
-	log.Debug("GetContent with NoRedirect: " + indexUrl)
+	log.Debugf("GetContent with NoRedirect: %s", indexUrl)
 	resp, err := r.Request("GET", indexUrl, false)
 
 	if err != nil {
-		log.Debug(fmt.Sprintf("%s", err))
+		log.Debugf("%v", err)
 	} else {
 		urlContent = append(urlContent, string(resp.Data))
 		headerContent = append(headerContent, resp.Headers)
 	}
 
 	// 获取icon指纹
-	log.Debug("GetIconHash: " + faviconUrl)
+	log.Debugf("GetIconHash: %s", faviconUrl)
 	faviconHash, err = r.GetFaviconHash(faviconUrl)
 	if err == nil && faviconHash != "" {
-		log.Debug(fmt.Sprintf("GetIconHash: %s %s success", faviconUrl, faviconHash))
+		log.Debugf("GetIconHash: %s %s success", faviconUrl, faviconHash)
 	} else if err != nil {
-		log.Debug(fmt.Sprintf("GetIconHash Error %s", err))
+		log.Debugf("GetIconHash Error %s", err)
 	}
 
 	// CDN检测
 	cdn, err := cdncheck.NewWithCache()
 	if err != nil {
-		log.Debug(fmt.Sprintf("%s", err))
+		log.Debugf("%s", err)
 	} else {
 		if found, err := cdn.Check(net.ParseIP(targetUrl)); found && err == nil {
 			resultContent.CDN = "isCDN"
 		}
+	}
+
+	if r.options.EnableDirBrute {
+		ch := make(chan []string)
+		d := &brute.DirBrute{
+			IndexUrl: indexUrl,
+			ErrorUrl: errorUrl,
+			Options:  r.options,
+		}
+		go d.Start(ch)
+		dirbResult = <- ch
 	}
 	return
 }
@@ -314,7 +333,7 @@ func makeResultTemplate(resp Response) (r *Result) {
 	}
 	if resp.Title == "" && resp.ContentLength < 120 {
 		r.Title = strings.Replace(string(resp.Data), "\n", "", -1)
-		r.Title = strings.Replace(r.Title, " ", "",-1)
+		r.Title = strings.Replace(r.Title, " ", "", -1)
 	}
 	return
 }
@@ -322,9 +341,9 @@ func makeResultTemplate(resp Response) (r *Result) {
 // output 输出处理
 func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGroup) {
 	defer wgoutput.Done()
-	if r.options.Output != "" && FileExists(r.options.Output){
+	if r.options.Output != "" && utils.FileExists(r.options.Output) {
 		err := os.Remove(r.options.Output)
-		if  err != nil {
+		if err != nil {
 			log.Fatal("already exists output file and Could not removed it.")
 		}
 	}
@@ -374,7 +393,7 @@ func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGr
 		if r.options.Output != "" {
 			f, err := os.OpenFile(r.options.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
 			if err != nil {
-				log.Fatal(fmt.Sprintf("Could not create output file '%s': %s", r.options.Output, err))
+				log.Fatalf("Could not create output file '%s': %s", r.options.Output, err)
 			}
 			_, err = f.WriteString(raw + "\n")
 			if err != nil {
@@ -408,11 +427,11 @@ func analyze(faviconHash string, headerContent []http.Header, indexContent []str
 	for _, h := range headerContent {
 		if h.Get("X-Powered-By") != "" {
 			//log.Debug(StringArrayToString(h.Values("X-Powered-By")), true)
-			result.Technologies = append(result.Technologies, StringArrayToString(h.Values("X-Powered-By")))
+			result.Technologies = append(result.Technologies, utils.StringArrayToString(h.Values("X-Powered-By")))
 		}
 		if h.Get("Server") != "" {
 			//log.Debug(StringArrayToString(h.Values("Server")), true)
-			result.Technologies = append(result.Technologies, StringArrayToString(h.Values("Server")))
+			result.Technologies = append(result.Technologies, utils.StringArrayToString(h.Values("Server")))
 		}
 		break
 	}
@@ -425,13 +444,13 @@ func detect(name string, faviconHash string, headerContent []http.Header, indexC
 	}
 	if mf.Method == "keyword" {
 		flag := detectKeywords(headerContent, indexContent, mf)
-		if flag && !StringArrayContains(rs, name) {
+		if flag && !utils.StringArrayContains(rs, name) {
 			rs = append(rs, name)
 		}
 	}
 
 	if mf.Method == "faviconhash" && faviconHash != "" {
-		if mf.Keyword[0] == faviconHash && !StringArrayContains(rs, name) {
+		if mf.Keyword[0] == faviconHash && !utils.StringArrayContains(rs, name) {
 			rs = append(rs, name)
 		}
 	}
@@ -456,7 +475,7 @@ func detectKeywords(headerContent []http.Header, indexContent []string, mf confi
 		for _, k := range mf.Keyword {
 			for _, h := range headerContent {
 				for _, v := range h {
-					if !strings.Contains(StringArrayToString(v), k) {
+					if !strings.Contains(utils.StringArrayToString(v), k) {
 						return false
 					}
 				}

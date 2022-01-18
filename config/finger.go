@@ -1,10 +1,9 @@
 package config
 
 import (
-	"blackJack/log"
 	"blackJack/utils"
 	"encoding/json"
-	"fmt"
+	"github.com/t43Wiu6/tlog"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -27,29 +26,19 @@ type Config struct {
 	Rules []Finger
 }
 
-// 获取当前执行文件绝对路径
-func getCurrentAbPathByCaller() (exPath string, err error) {
-	ex, err := os.Executable()
-	if err != nil {
-		return
-	}
-	exPath = filepath.Dir(ex)
-	return
-}
-
 func LoadFinger() (configs Config, err error) {
-	filePath, err := getCurrentAbPathByCaller()
+	filePath, err := utils.GetCurrentAbPathByCaller()
 	if err == nil{
 		home, _ := os.UserHomeDir()
 		filePath = filepath.Join(home, "blackJack", "finger.json")
 		dat, errs := ioutil.ReadFile(filePath)
 		if errs != nil {
-			log.Warn(fmt.Sprintf("finger.json not found, unable to read config file: %s", filePath))
+			log.Warnf("finger.json not found, unable to read config file: %s", filePath)
 			return configs, errs
 		}
 		err = json.Unmarshal(dat, &configs)
 		if err != nil {
-			log.Error(fmt.Sprintf("%s", err))
+			log.Errorf("%s", err)
 			return
 		}
 	}
@@ -57,7 +46,7 @@ func LoadFinger() (configs Config, err error) {
 	for _, k := range configs.Rules {
 		a = a + len(k.Fingerprint)
 	}
-	log.Info(fmt.Sprintf("Totaly load finger %d 's", a))
+	log.Infof("Totaly load finger %d 's", a)
 	return
 }
 

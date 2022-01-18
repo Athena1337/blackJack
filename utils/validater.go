@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"blackJack/log"
+	"github.com/t43Wiu6/tlog"
 	"net/url"
 	"strings"
 )
@@ -10,7 +10,7 @@ func ValidateUrl(targetUrl string) string{
 	if strings.HasPrefix(targetUrl, "https") {
 		_, err := url.Parse(targetUrl)
 		if err != nil {
-			log.Error("could not parse request URL: "+targetUrl)
+			log.Errorf("could not parse request URL: %s", targetUrl)
 			return ""
 		}
 		return "https"
@@ -19,7 +19,7 @@ func ValidateUrl(targetUrl string) string{
 	if strings.HasPrefix(targetUrl, "http") {
 		_, err := url.Parse(targetUrl)
 		if err != nil {
-			log.Error("could not parse request URL: "+targetUrl)
+			log.Errorf("could not parse request URL: %s", targetUrl)
 			return ""
 		}
 		return "http"

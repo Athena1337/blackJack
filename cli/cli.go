@@ -2,10 +2,10 @@ package cli
 
 import (
 	"blackJack/config"
-	"blackJack/log"
 	"blackJack/runner"
 	"blackJack/utils"
 	"fmt"
+	"github.com/t43Wiu6/tlog"
 	"github.com/urfave/cli/v2"
 	"os"
 	"strings"
@@ -66,9 +66,9 @@ func Action(c *cli.Context) error {
 			faviconHash, err = r.GetFaviconHash(options.FaviconUrl)
 		}
 		if err == nil && faviconHash != "" {
-			log.Info(fmt.Sprintf("url: %s, faviconHash: %s", options.FaviconUrl, faviconHash))
+			log.Infof("url: %s, faviconHash: %s", options.FaviconUrl, faviconHash)
 		} else {
-			log.Error(fmt.Sprintf("%s", err))
+			log.Errorf("%s", err)
 		}
 	}
 	return nil
