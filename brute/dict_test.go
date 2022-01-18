@@ -10,10 +10,3 @@ func TestPrepareDict(t *testing.T) {
 		t.Error("PrepareDict Error")
 	}
 }
-
-func TestDownloadDict(t *testing.T) {
-	err := DownloadDict()
-	if err != nil {
-		t.Error("DownloadDict Error")
-	}
-}

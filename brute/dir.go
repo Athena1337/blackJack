@@ -6,12 +6,14 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/pterm/pterm"
 	"github.com/remeh/sizedwaitgroup"
 	"github.com/t43Wiu6/tlog"
 	"gopkg.in/go-dedup/simhash.v2"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -72,7 +74,7 @@ func compare(resp1 []byte, resp2 []byte) (bool, error) {
 	rs := simhash.Compare(hashes1, hashes2)
 
 	// 差异大于10，认定为不同页面
-	if rs > 10 {
+	if rs > 20 {
 		return false, nil
 	}
 	return true, nil
@@ -81,7 +83,13 @@ func compare(resp1 []byte, resp2 []byte) (bool, error) {
 func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup) {
 	defer wg.Done()
 
-	dictUrl := fmt.Sprintf("%s%s", dir.IndexUrl, dict)
+	var dictUrl string
+	if strings.HasSuffix(dir.IndexUrl, "/"){
+		dictUrl = fmt.Sprintf("%s%s", dir.IndexUrl, dict)
+	}else{
+		dictUrl = fmt.Sprintf("%s/%s", dir.IndexUrl, dict)
+	}
+
 	log.Debugf("[DirBrute] Get url : %s", dictUrl)
 	req, err := http.NewRequest("GET", dictUrl, nil)
 	if err != nil {
@@ -96,21 +104,34 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup) {
 		return
 	}
 
-	// 不相似
+	if resp.StatusCode == 404 {
+		return
+	}
+
 	dir.Lock()
 	defer dir.Unlock()
 	data := utils.DumpHttpResponse(resp)
 
+	// nginx \ tengine 反代
+	if strings.Contains(string(data),"403 Forbidden") && resp.StatusCode == 403{
+		return
+	}
+
+	if resp.StatusCode != 200 && resp.StatusCode != 403 && resp.StatusCode != 500{
+		return
+	}
+
+	// 不相似
 	if flag, err := compare(data, dir.errorContent); err == nil && !flag {
 		if flag2, err := compare(data, dir.indexContent); err == nil && !flag2{
-			template := fmt.Sprintf("[!] [%d] - %d - %s", resp.StatusCode, resp.ContentLength, req.URL.String())
-			fmt.Println(template)
+			template := fmt.Sprintf("[!] [%d] - %d - %s", resp.StatusCode, len(data), req.URL.String())
+			// fmt.Println(template)
 			dir.list = append(dir.list, template)
 		}
 	} else if err != nil {
 		log.Errorf("Compare content error: %v", err)
 	}
-	log.Debugf("The similarity of the page %s to NotFoundPage is less than 3", resp.Request.URL.String())
+	log.Debugf("The similarity of the page %s to NotFoundPage is less than 10", resp.Request.URL.String())
 }
 
 func (dir *DirBrute) detectPseudo() (err error) {
@@ -130,20 +151,19 @@ func (dir *DirBrute) detectPseudo() (err error) {
 	return
 }
 
-//func (dir *DirBrute) Output() {
-//	return dir.list
-//}
-
-func (dir *DirBrute) Start(output chan []string) {
+func (dir *DirBrute) Start(output chan []string, printer *pterm.SpinnerPrinter) {
+	log.Debugf("[DirBrute] Start to Brute Force %s", dir.IndexUrl)
 	dir.init()
 	dicts, err := PrepareDict()
 	if err != nil {
+		output <- dir.list
 		log.Errorf("PrepareDict Failed: %v", err)
 		return
 	}
 
 	err = dir.detectPseudo()
 	if err != nil {
+		output <- dir.list
 		log.Errorf("Request Pseudo 404 page Failed: %v", err)
 		return
 	}
@@ -151,9 +171,13 @@ func (dir *DirBrute) Start(output chan []string) {
 	wg := sizedwaitgroup.New(dir.Options.Threads) // set threads , 50 by default
 	for _, dict := range dicts {
 		wg.Add()
+		go func (){
+			time.Sleep(time.Second)
+			printer.UpdateText(fmt.Sprintf("[DirBrute] Brute Force Target :%s path : %s", dir.IndexUrl, dict))
+		}()
+
 		go dir.request(dict, &wg)
 	}
-
 	wg.Wait()
 	output <- dir.list
 }

@@ -59,7 +59,7 @@ func DumpHttpResponse(resp *http.Response) []byte{
 				break
 			}
 		}
-		log.Debugf("DumpContent %s : %s", resp.Request.URL.String() ,string(respBody))
+		// log.Debugf("DumpContent %s : %s", resp.Request.URL.String() ,string(respBody))
 	}
 	return respBody
 }

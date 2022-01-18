@@ -34,6 +34,20 @@ func Action(c *cli.Context) error {
 		log.Fatal(err.Error())
 	}
 
+	if c.String("o") != "" && utils.FileExists(c.String("o")) {
+		err := os.Remove(c.String("o"))
+		if err != nil {
+			log.Fatal("already exists output file and Could not removed it.")
+		}
+	}
+	if c.String("o") != ""{
+		f, err := os.OpenFile(c.String("o"), os.O_CREATE, 0666)
+		if err != nil {
+			log.Fatalf("Could not create output file '%s': %s", c.String("o"), err)
+		}
+		_ = f.Close()
+	}
+
 	if c.Bool("d") {
 		log.Debug("Enable Debug mode")
 	}
@@ -48,8 +62,10 @@ func Action(c *cli.Context) error {
 	if c.String("u") == "" && c.String("l") == "" && c.String("i") == ""{
 		cli.ShowAppHelp(c)
 	}else if c.String("u") != ""{
+		// 根据url扫描
 		r.CreateRunner()
 	}else if c.String("l") != ""{
+		// 读取url文件扫描
 		r.CreateRunner()
 	}else if c.String("i") != ""{
 		// 分析网站icon指纹
@@ -61,6 +77,7 @@ func Action(c *cli.Context) error {
 		}
 		faviconHash, err := r.GetFaviconHash(options.FaviconUrl)
 		if err !=nil && strings.Contains(options.FaviconUrl, "https"){
+			// 垃圾的重试机制
 			err = nil
 			options.FaviconUrl = strings.Replace(options.FaviconUrl, "https", "http", 1)
 			faviconHash, err = r.GetFaviconHash(options.FaviconUrl)

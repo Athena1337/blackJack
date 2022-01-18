@@ -1,8 +1,13 @@
 package config
 
 import (
+	"github.com/t43Wiu6/tlog"
 	"time"
 )
+
+func SetEnv(isDebug bool) {
+	log.DEBUG = isDebug
+}
 
 type Options struct {
 	TargetUrl      string

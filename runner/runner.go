@@ -3,6 +3,7 @@ package runner
 import (
 	"blackJack/brute"
 	"blackJack/config"
+	"blackJack/finger"
 	"blackJack/utils"
 	"crypto/tls"
 	"errors"
@@ -13,7 +14,7 @@ import (
 	pdhttputil "github.com/projectdiscovery/httputil"
 	"github.com/pterm/pterm"
 	"github.com/remeh/sizedwaitgroup"
-	log "github.com/t43Wiu6/tlog"
+	"github.com/t43Wiu6/tlog"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -26,7 +27,7 @@ import (
 )
 
 var focusOn []string
-var CONFIG config.Config
+var CONFIG finger.Config
 
 // Runner A user options
 type Runner struct {
@@ -34,6 +35,7 @@ type Runner struct {
 	client           *http.Client
 	Dialer           *fastdialer.Dialer
 	options          *config.Options
+	printer          *pterm.SpinnerPrinter
 }
 
 // Result of a scan
@@ -55,6 +57,10 @@ type Result struct {
 func New(options *config.Options) (*Runner, error) {
 	runner := &Runner{
 		options: options,
+	}
+	if options.EnableDirBrute{
+		spinnerLiveText, _ := pterm.DefaultSpinner.Start("[DirBrute] Waiting to Brute Force")
+		runner.printer = spinnerLiveText
 	}
 
 	// 创建不允许重定向的http client
@@ -101,34 +107,29 @@ func New(options *config.Options) (*Runner, error) {
 // CreateRunner 创建扫描
 func (r *Runner) CreateRunner() {
 	var err error
-	CONFIG, err = config.LoadFinger()
-	if err != nil {
-		errs := config.DownloadFinger()
+	if !config.Check() {
+		errs := config.DownloadAll()
 		if errs != nil {
 			log.Fatal("unable to download automatically")
 		}
 	}
+	CONFIG, err = finger.LoadFinger()
+	if err != nil {
+		log.Fatalf("LoadFinger failed: %v", err)
+	}
 	config.SetEnv(r.options.IsDebug)
-
-	// output routine
-	wgoutput := sizedwaitgroup.New(1)
-	wgoutput.Add()
-	output := make(chan Result)
-	go r.output(output, &wgoutput)
 
 	// runner
 	log.Warnf("Default threads: %d", r.options.Threads)
 	wg := sizedwaitgroup.New(r.options.Threads) // set threads , 50 by default
-	r.generate(output, &wg)
+	r.generate(&wg)
 	wg.Wait()
-	close(output)
-	wgoutput.Wait()
 
-	// 将重点资产写入输出文件
+	// 扫描结束 追加重点资产列表
 	if r.options.Output != "" && len(focusOn) != 0 {
-		f, err := os.OpenFile(r.options.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+		f, err := os.OpenFile(r.options.Output, os.O_APPEND|os.O_WRONLY, 0666)
 		if err != nil {
-			log.Fatalf("Could not create output file '%s': %s", r.options.Output, err)
+			log.Fatalf("Could not open output file '%s': %s", r.options.Output, err)
 		}
 		defer func(f *os.File) {
 			err := f.Close()
@@ -150,12 +151,12 @@ func (r *Runner) CreateRunner() {
 	}
 }
 
-// generate all target url
-func (r *Runner) generate(output chan Result, wg *sizedwaitgroup.SizedWaitGroup) {
+// generate 读取文件或直接处理url并开始调度
+func (r *Runner) generate(wg *sizedwaitgroup.SizedWaitGroup) {
 	if r.options.TargetUrl != "" {
 		log.Infof("single target: %s", r.options.TargetUrl)
 		wg.Add()
-		go r.process(output, r.options.TargetUrl, wg)
+		go r.process(r.options.TargetUrl, wg)
 	} else {
 		urls, err := utils.ReadFile(r.options.UrlFile)
 		if err != nil {
@@ -164,39 +165,73 @@ func (r *Runner) generate(output chan Result, wg *sizedwaitgroup.SizedWaitGroup)
 			log.Infof("Read %d's url", len(urls))
 			for _, u := range urls {
 				wg.Add()
-				go r.process(output, u, wg)
+				go r.process(u, wg)
 			}
 		}
 	}
 }
 
-// process 请求获取每个url内容用于后续分析
-func (r *Runner) process(output chan Result, url string, wg *sizedwaitgroup.SizedWaitGroup) () {
+// process 请求获取每个url内容并分析后输出
+func (r *Runner) process(url string, wg *sizedwaitgroup.SizedWaitGroup) () {
 	defer wg.Done()
 	options := &config.Options{}
 	origProtocol := options.OrigProtocol
 	log.Debug(url)
-	faviconHash, headerContent, urlContent, resultContent, dirbrs, err := r.scan(url, origProtocol)
+	ch := make(chan []string)
+	faviconHash, headerContent, urlContent, resultContent, err := r.scan(url, origProtocol, ch)
 	if err != nil {
 		return
 	}
-	if r.options.Output != "" && r.options.EnableDirBrute{
-		rs := analyze(faviconHash, headerContent, urlContent, resultContent)
-		rs.DirBruteRs = dirbrs
-	}else {
-		output <- analyze(faviconHash, headerContent, urlContent, resultContent)
-		//
+
+	raw := makeOutput(analyze(faviconHash, headerContent, urlContent, resultContent))
+	if r.options.Output != "" && r.options.EnableDirBrute {
+		// 如果开启目录爆破功能，等待目录爆破完毕一起写入文件
+		dirbResult := <-ch
+		if len(dirbResult) < 1 {
+			return
+		}
+		f, err := os.OpenFile(r.options.Output, os.O_APPEND|os.O_WRONLY, 0666)
+		if err != nil {
+			log.Fatalf("Could not open output file '%s': %s", r.options.Output, err)
+		}
+
+		// 先写入 指纹探测结果
+		_, err = f.WriteString(raw + "\n")
+		if err != nil {
+			log.Error(err.Error())
+		}
+		// 后写入 目录爆破结果
+		for _, raw := range dirbResult {
+			_, err = f.WriteString(raw + "\n")
+			fmt.Println(raw)
+			if err != nil {
+				log.Error(err.Error())
+			}
+		}
+	} else if r.options.Output == "" && r.options.EnableDirBrute {
+		dirbResult := <-ch
+		if len(dirbResult) < 1 {
+			return
+		}
+		// 没有输出文件 直接打印目录爆破结果 指纹结果已经输出过
+		for _, raw := range dirbResult {
+			fmt.Println(raw)
+		}
+	} else if r.options.Output != "" && !r.options.EnableDirBrute {
+		// 仅指纹识别
+		f, err := os.OpenFile(r.options.Output, os.O_APPEND|os.O_WRONLY, 0666)
+		if err != nil {
+			log.Fatalf("Could not open output file '%s': %s", r.options.Output, err)
+		}
+		_, err = f.WriteString(raw + "\n")
+		if err != nil {
+			log.Error(err.Error())
+		}
 	}
 }
 
 // scan 扫描单个url
-// 对单个目标
-// 1. 请求主页一次
-// 2. 不允许重定向地请求主页一次
-// 3. 请求icon一次
-// 4. 请求不存在的页面一次
-// return icon指纹 响应头列表 响应体列表 结果样例
-func (r *Runner) scan(url string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, dirbResult []string, err error) {
+func (r *Runner) scan(url string, origProtocol string, ch chan []string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, err error) {
 	var indexUrl string
 	var faviconUrl string
 	var errorUrl string
@@ -304,15 +339,14 @@ retry:
 		}
 	}
 
+	// 调度目录爆破
 	if r.options.EnableDirBrute {
-		ch := make(chan []string)
 		d := &brute.DirBrute{
 			IndexUrl: indexUrl,
 			ErrorUrl: errorUrl,
 			Options:  r.options,
 		}
-		go d.Start(ch)
-		dirbResult = <- ch
+		go d.Start(ch, r.printer)
 	}
 	return
 }
@@ -338,84 +372,59 @@ func makeResultTemplate(resp Response) (r *Result) {
 	return
 }
 
-// output 输出处理
-func (r *Runner) output(output chan Result, wgoutput *sizedwaitgroup.SizedWaitGroup) {
-	defer wgoutput.Done()
-	if r.options.Output != "" && utils.FileExists(r.options.Output) {
-		err := os.Remove(r.options.Output)
-		if err != nil {
-			log.Fatal("already exists output file and Could not removed it.")
+// makeOutput 分析指纹并生成输出
+func makeOutput(resp Result) string {
+	var finger string
+	var technology string
+	for k, v := range resp.Finger {
+		if k == 0 {
+			finger = v
+		} else {
+			finger = finger + "," + v
 		}
 	}
-	for resp := range output {
-		var finger string
-		var technology string
-		for k, v := range resp.Finger {
-			if k == 0 {
-				finger = v
-			} else {
-				finger = finger + "," + v
-			}
-		}
 
-		for k, v := range resp.Technologies {
-			if k == 0 {
-				technology = v
-			} else {
-				technology = technology + "," + v
-			}
+	for k, v := range resp.Technologies {
+		if k == 0 {
+			technology = v
+		} else {
+			technology = technology + "," + v
 		}
-		row := pterm.NewStyle(pterm.Bold).Sprintf("%s ", resp.URL)
-		row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.FgMagenta, pterm.Bold).Sprintf("%d", resp.StatusCode))
-		row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.FgCyan).Sprintf("%d", resp.ContentLength))
-		row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.Bold).Sprintf("%s", resp.Title))
-		raw := fmt.Sprintf("%s [%d]  [%d]  [%s] ", resp.URL, resp.StatusCode, resp.ContentLength, resp.Title)
-
-		if technology != "" {
-			row += fmt.Sprintf("[%s] ", technology)
-			raw += fmt.Sprintf("[%s] ", technology)
-		}
-
-		if finger != "" {
-			row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.FgRed, pterm.Bold).Sprintf("%s", finger))
-			raw += fmt.Sprintf("[%s] ", finger)
-			focusOn = append(focusOn, row)
-		}
-
-		if resp.VHost != "noVhost" {
-			row += fmt.Sprintf("[%s] ", resp.VHost)
-			raw += fmt.Sprintf("[%s] ", resp.VHost)
-		}
-		if resp.CDN != "noCDN" {
-			row += fmt.Sprintf("[%s] ", resp.CDN)
-			raw += fmt.Sprintf("[%s] ", resp.CDN)
-		}
-		if r.options.Output != "" {
-			f, err := os.OpenFile(r.options.Output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
-			if err != nil {
-				log.Fatalf("Could not create output file '%s': %s", r.options.Output, err)
-			}
-			_, err = f.WriteString(raw + "\n")
-			if err != nil {
-				log.Error(err.Error())
-			}
-		}
-		pterm.DefaultBasicText.Print(row + "\n")
 	}
+	row := pterm.NewStyle(pterm.Bold).Sprintf("%s ", resp.URL)
+	row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.FgMagenta, pterm.Bold).Sprintf("%d", resp.StatusCode))
+	row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.FgCyan).Sprintf("%d", resp.ContentLength))
+	row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.Bold).Sprintf("%s", resp.Title))
+	raw := fmt.Sprintf("%s [%d]  [%d]  [%s] ", resp.URL, resp.StatusCode, resp.ContentLength, resp.Title)
+
+	if technology != "" {
+		row += fmt.Sprintf("[%s] ", technology)
+		raw += fmt.Sprintf("[%s] ", technology)
+	}
+
+	if finger != "" {
+		row += fmt.Sprintf("[%s] ", pterm.NewStyle(pterm.FgRed, pterm.Bold).Sprintf("%s", finger))
+		raw += fmt.Sprintf("[%s] ", finger)
+		focusOn = append(focusOn, row)
+	}
+
+	if resp.VHost != "noVhost" {
+		row += fmt.Sprintf("[%s] ", resp.VHost)
+		raw += fmt.Sprintf("[%s] ", resp.VHost)
+	}
+	if resp.CDN != "noCDN" {
+		row += fmt.Sprintf("[%s] ", resp.CDN)
+		raw += fmt.Sprintf("[%s] ", resp.CDN)
+	}
+	pterm.DefaultBasicText.Print(row + "\n")
+	return raw
 }
 
 // analyze content by fingerprint
-//
-// analyze with 3 ways
-// fisrstly, Judgment keyword from finger
-// secondly,  detect faviconhash
-// last, extract `X-Powered-By` and `Header` in header
-//
-// append to the result.Technologies[] if hitted
 func analyze(faviconHash string, headerContent []http.Header, indexContent []string, resultContent *Result) Result {
 	configs := CONFIG.Rules
 	result := resultContent
-	var f config.Finger
+	var f finger.Finger
 
 	for _, f = range configs {
 		for _, p := range f.Fingerprint {
@@ -426,11 +435,9 @@ func analyze(faviconHash string, headerContent []http.Header, indexContent []str
 	// range all header extract `X-Powered-By` and `Header` value
 	for _, h := range headerContent {
 		if h.Get("X-Powered-By") != "" {
-			//log.Debug(StringArrayToString(h.Values("X-Powered-By")), true)
 			result.Technologies = append(result.Technologies, utils.StringArrayToString(h.Values("X-Powered-By")))
 		}
 		if h.Get("Server") != "" {
-			//log.Debug(StringArrayToString(h.Values("Server")), true)
 			result.Technologies = append(result.Technologies, utils.StringArrayToString(h.Values("Server")))
 		}
 		break
@@ -438,7 +445,7 @@ func analyze(faviconHash string, headerContent []http.Header, indexContent []str
 	return *result
 }
 
-func detect(name string, faviconHash string, headerContent []http.Header, indexContent []string, mf config.MetaFinger) (rs []string) {
+func detect(name string, faviconHash string, headerContent []http.Header, indexContent []string, mf finger.MetaFinger) (rs []string) {
 	if len(headerContent) == 0 && len(indexContent) == 0 {
 		return
 	}
@@ -457,7 +464,7 @@ func detect(name string, faviconHash string, headerContent []http.Header, indexC
 	return
 }
 
-func detectKeywords(headerContent []http.Header, indexContent []string, mf config.MetaFinger) bool {
+func detectKeywords(headerContent []http.Header, indexContent []string, mf finger.MetaFinger) bool {
 	// if keyword in body
 	if mf.Location == "body" {
 		for _, k := range mf.Keyword {
