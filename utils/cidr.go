@@ -1,8 +1,8 @@
 package utils
 
 import (
-	"blackJack/log"
 	"fmt"
+	"github.com/t43Wiu6/tlog"
 	"net"
 	"sort"
 	"strings"
@@ -24,7 +24,7 @@ func CheckCIDR(D []string) string{
 	for _, name := range D {
 		addr, err := net.ResolveIPAddr("ip", name)
 		if err != nil {
-			log.Debug("Resolvtion error" + err.Error())
+			log.Debugf("Resolvtion error, %v" , err.Error())
 			continue
 		}
 

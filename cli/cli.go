@@ -2,10 +2,10 @@ package cli
 
 import (
 	"blackJack/config"
-	"blackJack/log"
 	"blackJack/runner"
 	"blackJack/utils"
 	"fmt"
+	"github.com/t43Wiu6/tlog"
 	"github.com/urfave/cli/v2"
 	"os"
 	"strings"
@@ -34,11 +34,31 @@ func Action(c *cli.Context) error {
 		log.Fatal(err.Error())
 	}
 
+	if c.String("o") != "" && utils.FileExists(c.String("o")) {
+		err := os.Remove(c.String("o"))
+		if err != nil {
+			log.Fatal("already exists output file and Could not removed it.")
+		}
+	}
+	if c.String("o") != ""{
+		f, err := os.OpenFile(c.String("o"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+		if err != nil {
+			log.Fatalf("Could not create output file '%s': %s", c.String("o"), err)
+		}
+		options.OutputFile.File = f
+	}
+
 	if c.Bool("d") {
 		log.Debug("Enable Debug mode")
 	}
 	if c.String("OrigProtocol") == ""{
 		options.OrigProtocol = "https||http"
+	}
+
+	if c.Bool("b"){
+		r.DirStatus.AllJob = 0
+		r.DirStatus.DoneJob = 0
+		log.Warn("Enable DirBrute module, this module will work on background, maybe affect the survival and fingerprint modules")
 	}
 
 	if c.String("l") != "" && !utils.FileExists(c.String("l")) {
@@ -48,8 +68,10 @@ func Action(c *cli.Context) error {
 	if c.String("u") == "" && c.String("l") == "" && c.String("i") == ""{
 		cli.ShowAppHelp(c)
 	}else if c.String("u") != ""{
+		// 根据url扫描
 		r.CreateRunner()
 	}else if c.String("l") != ""{
+		// 读取url文件扫描
 		r.CreateRunner()
 	}else if c.String("i") != ""{
 		// 分析网站icon指纹
@@ -61,14 +83,15 @@ func Action(c *cli.Context) error {
 		}
 		faviconHash, err := r.GetFaviconHash(options.FaviconUrl)
 		if err !=nil && strings.Contains(options.FaviconUrl, "https"){
+			// 垃圾的重试机制
 			err = nil
 			options.FaviconUrl = strings.Replace(options.FaviconUrl, "https", "http", 1)
 			faviconHash, err = r.GetFaviconHash(options.FaviconUrl)
 		}
 		if err == nil && faviconHash != "" {
-			log.Info(fmt.Sprintf("url: %s, faviconHash: %s", options.FaviconUrl, faviconHash))
+			log.Infof("url: %s, faviconHash: %s", options.FaviconUrl, faviconHash)
 		} else {
-			log.Error(fmt.Sprintf("%s", err))
+			log.Errorf("%s", err)
 		}
 	}
 	return nil

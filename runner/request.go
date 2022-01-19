@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"blackJack/log"
 	"blackJack/utils"
 	"bytes"
 	"context"
@@ -9,6 +8,7 @@ import (
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	pdhttputil "github.com/projectdiscovery/httputil"
+	"github.com/t43Wiu6/tlog"
 	"io/ioutil"
 	"net/http"
 	"net/url"

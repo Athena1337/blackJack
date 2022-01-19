@@ -1,8 +1,20 @@
 package config
 
 import (
+	"github.com/t43Wiu6/tlog"
+	"os"
+	"sync"
 	"time"
 )
+
+func SetEnv(isDebug bool) {
+	log.DEBUG = isDebug
+}
+
+type OutputFile struct {
+	sync.Mutex
+	File *os.File
+}
 
 type Options struct {
 	TargetUrl      string
@@ -20,6 +32,7 @@ type Options struct {
 	Output         string
 	JSONOutput     bool
 	Proxy          string
+	OutputFile     OutputFile
 }
 
 var DefaultOption = Options{

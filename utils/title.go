@@ -1,9 +1,9 @@
 package utils
 
 import (
-	"blackJack/log"
 	"bytes"
 	"fmt"
+	"github.com/t43Wiu6/tlog"
 	"golang.org/x/net/html"
 	"io"
 	"io/ioutil"
@@ -110,7 +110,7 @@ func getTitleWithDom(r *Response) (*html.Node, error, []byte) {
 	body, err := ioutil.ReadAll(r.Body)
 
 	if err != nil {
-		log.Error(fmt.Sprintf("Error reading body: %v", err))
+		log.Errorf("Error reading body: %v", err)
 	}
 	htmlDoc, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
