@@ -79,7 +79,7 @@ func (dir *DirBrute) Start(output chan []string, printer *pterm.SpinnerPrinter, 
 	err = dir.detectPseudo()
 	if err != nil {
 		output <- dir.list
-		log.Errorf("Request Pseudo 404 page Failed: %v", err)
+		log.Debugf("Request Pseudo 404 page Failed: %v", err)
 		return
 	}
 
@@ -128,6 +128,9 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup, pri
 	if resp.StatusCode > 399 && resp.StatusCode != 500 && resp.StatusCode != 403 {
 		return
 	}
+	if len(data) == 0{
+		return
+	}
 
 	// 不相似
 	h := utils.GetHash(data)
@@ -144,13 +147,13 @@ func (dir *DirBrute) isInBlackList(h uint64) bool {
 	for _, hash := range dir.Simhash {
 		// hash类似， 认为是两个近似页面
 		if utils.IsSimilarHash(hash, h) {
-			// 追加
-			dir.Lock()
-			dir.Simhash = append(dir.Simhash, h)
-			dir.Unlock()
 			return true
 		}
 	}
+	// 不相似的追加
+	dir.Lock()
+	dir.Simhash = append(dir.Simhash, h)
+	dir.Unlock()
 	return false
 }
 
