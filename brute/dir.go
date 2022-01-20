@@ -119,7 +119,7 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup, pri
 	data := utils.DumpHttpResponse(resp)
 
 	// nginx \ tengine 反代
-	if strings.Contains(string(data), "403 Forbidden") && resp.StatusCode == 403 {
+	if strings.Contains(string(data), "Forbidden") && resp.StatusCode == 403 {
 		return
 	}
 	if resp.StatusCode < 300 && resp.StatusCode != 200 {

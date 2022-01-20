@@ -62,7 +62,7 @@ func New(options *config.Options) (*Runner, error) {
 		options: options,
 	}
 	if options.EnableDirBrute {
-		spinnerLiveText, _ := pterm.DefaultSpinner.Start("[DirBrute] Waiting to Brute Force")
+		spinnerLiveText, _ := pterm.DefaultSpinner.Start("[DirBrute] Waiting Target to Brute Force from Alive Module")
 		runner.printer = spinnerLiveText
 	}
 
@@ -184,34 +184,42 @@ func (r *Runner) process(url string, wg *sizedwaitgroup.SizedWaitGroup) () {
 	defer r.options.OutputFile.Unlock()
 	if r.options.Output != "" && r.options.EnableDirBrute {
 		// 如果开启目录爆破功能，等待目录爆破完毕一起写入文件
-		dirbResult := <-ch
-		r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
-		if len(dirbResult) < 1 {
-			return
-		}
+		select{
+			case dirbResult := <-ch:
+				r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
+				if len(dirbResult) < 1 {
+					return
+				}
 
-		// 先写入 指纹探测结果
-		_, err = r.options.OutputFile.File.WriteString(raw + "\n")
-		if err != nil {
-			log.Fatalf("Could not write output file '%s': %s", r.options.Output, err)
-		}
-		// 后写入 目录爆破结果
-		for _, raw := range dirbResult {
-			_, err = r.options.OutputFile.File.WriteString(raw + "\n")
-			pterm.DefaultBasicText.Print(raw + "\n")
-			if err != nil {
-				log.Errorf("Could not write output file '%s': %s", r.options.Output, err)
-			}
+				// 先写入 指纹探测结果
+				_, err = r.options.OutputFile.File.WriteString(raw + "\n")
+				if err != nil {
+					log.Fatalf("Could not write output file '%s': %s", r.options.Output, err)
+				}
+				// 后写入 目录爆破结果
+				for _, raw := range dirbResult {
+					_, err = r.options.OutputFile.File.WriteString(raw + "\n")
+					pterm.DefaultBasicText.Print(raw + "\n")
+					if err != nil {
+						log.Errorf("Could not write output file '%s': %s", r.options.Output, err)
+					}
+				}
+			case <-time.After(time.Duration(180) * time.Second):
+				log.Errorf("target %s ,task timeout", url)
 		}
 	} else if r.options.Output == "" && r.options.EnableDirBrute {
-		dirbResult := <-ch
-		r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
-		if len(dirbResult) < 1 {
-			return
-		}
-		// 没有输出文件 直接打印目录爆破结果 指纹结果已经输出过
-		for _, raw := range dirbResult {
-			pterm.DefaultBasicText.Print(raw + "\n")
+		select{
+		case dirbResult := <-ch:
+			r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
+			if len(dirbResult) < 1 {
+				return
+			}
+			// 没有输出文件 直接打印目录爆破结果 指纹结果已经输出过
+			for _, raw := range dirbResult {
+				pterm.DefaultBasicText.Print(raw + "\n")
+			}
+		case <-time.After(time.Duration(180) * time.Second):
+			log.Errorf("target %s ,task timeout", url)
 		}
 	} else if r.options.Output != "" && !r.options.EnableDirBrute {
 		// 仅指纹识别
@@ -308,6 +316,7 @@ retry:
 
 	if err != nil {
 		log.Debugf("%v", err)
+		return
 	} else {
 		urlContent = append(urlContent, string(resp.Data))
 		headerContent = append(headerContent, resp.Headers)
@@ -333,15 +342,18 @@ retry:
 	}
 
 	// 调度目录爆破
-	if r.options.EnableDirBrute {
+	if r.options.EnableDirBrute && err == nil{
 		d := &brute.DirBrute{
 			IndexUrl: indexUrl,
 			ErrorUrl: errorUrl,
 			Options:  r.options,
 		}
-		dirWg.Add()
-		r.DirStatus.AllJob = r.DirStatus.AllJob + 1
-		go d.Start(ch, r.printer, &dirWg, &r.DirStatus)
+		// add限制了10，憋阻塞在这了，给你个routine自己玩去
+		go func() {
+			r.DirStatus.AllJob = r.DirStatus.AllJob + 1
+			dirWg.Add()
+			go d.Start(ch, r.printer, &dirWg, &r.DirStatus)
+		}()
 	}
 	return
 }
