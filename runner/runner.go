@@ -39,6 +39,7 @@ type Runner struct {
 	options          *config.Options
 	printer          *pterm.SpinnerPrinter
 	DirStatus        brute.DirStatus
+	DirBrutes        []brute.DirBrute
 }
 
 // Result of a scan
@@ -129,6 +130,69 @@ func (r *Runner) CreateRunner() {
 	r.generate(&wg)
 	wg.Wait()
 
+	// 调度目录爆破
+	if r.options.EnableDirBrute {
+		// 计算超时时间大小
+		dicts, _ := brute.PrepareDict()
+		var timeout int
+		if len(dicts) < 40000 {
+			// 4w的字典实测基本在几十秒左右，60秒保底，180顶天了
+			timeout = 180
+		} else {
+			// 按每秒220个请求计算超时时间
+			timeout = len(dicts) / 220
+		}
+
+		r.DirStatus.AllJob = len(r.DirBrutes) + 1
+		for _, d := range r.DirBrutes {
+			ch := make(chan []string)
+			d := d
+			dirWg.Add()
+			go func() {
+				defer dirWg.Done()
+				r.options.OutputFile.Lock()
+				defer r.options.OutputFile.Unlock()
+				if r.options.Output != "" {
+					select {
+					case dirbResult := <-ch:
+						r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
+						if len(dirbResult) < 1 {
+							return
+						}
+						// 后写入 目录爆破结果
+						for _, raw := range dirbResult {
+							_, err = r.options.OutputFile.File.WriteString(raw + "\n")
+							pterm.DefaultBasicText.Print(raw + "\n")
+							if err != nil {
+								log.Errorf("Could not write output file '%s': %s", r.options.Output, err)
+							}
+						}
+					case <-time.After(time.Duration(timeout) * time.Second):
+						log.Error("a dirBrute task timed out")
+						return
+					}
+				} else if r.options.Output == "" {
+					select {
+					case dirbResult := <-ch:
+						r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
+						if len(dirbResult) < 1 {
+							return
+						}
+						// 没有输出文件 直接打印目录爆破结果
+						for _, raw := range dirbResult {
+							pterm.DefaultBasicText.Print(raw + "\n")
+						}
+					case <-time.After(time.Duration(timeout) * time.Second):
+						log.Error("a dirBrute task timed out")
+						return
+					}
+				}
+			}()
+			go d.Start(ch, r.printer, &r.DirStatus)
+		}
+		dirWg.Wait()
+	}
+
 	// 扫描结束 追加重点资产列表
 	if r.options.Output != "" && len(focusOn) != 0 {
 		r.options.OutputFile.Lock()
@@ -173,56 +237,15 @@ func (r *Runner) process(url string, wg *sizedwaitgroup.SizedWaitGroup) () {
 	options := &config.Options{}
 	origProtocol := options.OrigProtocol
 	log.Debug(url)
-	ch := make(chan []string)
-	faviconHash, headerContent, urlContent, resultContent, err := r.scan(url, origProtocol, ch)
+	faviconHash, headerContent, urlContent, resultContent, err := r.scan(url, origProtocol)
 	if err != nil {
 		return
 	}
 
 	raw := makeOutput(analyze(faviconHash, headerContent, urlContent, resultContent))
-	r.options.OutputFile.Lock()
-	defer r.options.OutputFile.Unlock()
-	if r.options.Output != "" && r.options.EnableDirBrute {
-		// 如果开启目录爆破功能，等待目录爆破完毕一起写入文件
-		select{
-			case dirbResult := <-ch:
-				r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
-				if len(dirbResult) < 1 {
-					return
-				}
-
-				// 先写入 指纹探测结果
-				_, err = r.options.OutputFile.File.WriteString(raw + "\n")
-				if err != nil {
-					log.Fatalf("Could not write output file '%s': %s", r.options.Output, err)
-				}
-				// 后写入 目录爆破结果
-				for _, raw := range dirbResult {
-					_, err = r.options.OutputFile.File.WriteString(raw + "\n")
-					pterm.DefaultBasicText.Print(raw + "\n")
-					if err != nil {
-						log.Errorf("Could not write output file '%s': %s", r.options.Output, err)
-					}
-				}
-			case <-time.After(time.Duration(180) * time.Second):
-				log.Errorf("target %s ,task timeout", url)
-		}
-	} else if r.options.Output == "" && r.options.EnableDirBrute {
-		select{
-		case dirbResult := <-ch:
-			r.DirStatus.DoneJob = r.DirStatus.DoneJob + 1
-			if len(dirbResult) < 1 {
-				return
-			}
-			// 没有输出文件 直接打印目录爆破结果 指纹结果已经输出过
-			for _, raw := range dirbResult {
-				pterm.DefaultBasicText.Print(raw + "\n")
-			}
-		case <-time.After(time.Duration(180) * time.Second):
-			log.Errorf("target %s ,task timeout", url)
-		}
-	} else if r.options.Output != "" && !r.options.EnableDirBrute {
-		// 仅指纹识别
+	if r.options.Output != "" {
+		r.options.OutputFile.Lock()
+		defer r.options.OutputFile.Unlock()
 		_, err = r.options.OutputFile.File.WriteString(raw + "\n")
 		if err != nil {
 			log.Fatalf("Could not open output file '%s': %s", r.options.Output, err)
@@ -231,7 +254,7 @@ func (r *Runner) process(url string, wg *sizedwaitgroup.SizedWaitGroup) () {
 }
 
 // scan 扫描单个url
-func (r *Runner) scan(url string, origProtocol string, ch chan []string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, err error) {
+func (r *Runner) scan(url string, origProtocol string) (faviconHash string, headerContent []http.Header, urlContent []string, resultContent *Result, err error) {
 	var indexUrl string
 	var faviconUrl string
 	var errorUrl string
@@ -333,27 +356,23 @@ retry:
 
 	// CDN检测
 	cdn, err := cdncheck.NewWithCache()
-	if err != nil {
-		log.Debugf("%s", err)
-	} else {
+	if err != nil{
+		log.Debugf("Cdn Initialize Failed %v", err)
+	}else{
 		if found, err := cdn.Check(net.ParseIP(targetUrl)); found && err == nil {
 			resultContent.CDN = "isCDN"
+		} else {
+			log.Debugf("%s", err)
 		}
 	}
 
-	// 调度目录爆破
-	if r.options.EnableDirBrute && err == nil{
-		d := &brute.DirBrute{
+	if r.options.EnableDirBrute{
+		d := brute.DirBrute{
 			IndexUrl: indexUrl,
 			ErrorUrl: errorUrl,
 			Options:  r.options,
 		}
-		// add限制了10，憋阻塞在这了，给你个routine自己玩去
-		go func() {
-			r.DirStatus.AllJob = r.DirStatus.AllJob + 1
-			dirWg.Add()
-			go d.Start(ch, r.printer, &dirWg, &r.DirStatus)
-		}()
+		r.DirBrutes = append(r.DirBrutes, d)
 	}
 	return
 }

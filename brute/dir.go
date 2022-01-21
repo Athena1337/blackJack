@@ -64,9 +64,7 @@ func (dir *DirBrute) init() {
 	dir.ua = utils.GetUserAgent()
 }
 
-func (dir *DirBrute) Start(output chan []string, printer *pterm.SpinnerPrinter, dirWg *sizedwaitgroup.SizedWaitGroup, process *DirStatus) {
-	defer dirWg.Done()
-
+func (dir *DirBrute) Start(output chan []string, printer *pterm.SpinnerPrinter, process *DirStatus) {
 	log.Debugf("[DirBrute] Start to Brute Force %s", dir.IndexUrl)
 	dir.init()
 	dicts, err := PrepareDict()
@@ -89,6 +87,7 @@ func (dir *DirBrute) Start(output chan []string, printer *pterm.SpinnerPrinter, 
 		go dir.request(dict, &wg, printer, process)
 	}
 	wg.Wait()
+	log.Debugf("[DirBrute] Target %s Done!", dir.IndexUrl)
 	output <- dir.list
 }
 
@@ -102,7 +101,6 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup, pri
 		dictUrl = fmt.Sprintf("%s/%s", dir.IndexUrl, dict)
 	}
 
-	log.Debugf("[DirBrute] Get url : %s", dictUrl)
 	req, err := http.NewRequest("GET", dictUrl, nil)
 	if err != nil {
 		return
@@ -120,25 +118,31 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup, pri
 
 	// nginx \ tengine 反代
 	if strings.Contains(string(data), "Forbidden") && resp.StatusCode == 403 {
+		log.Debugf("[DirBrute] Detected url : %s, Forbidden 403", dictUrl)
 		return
 	}
 	if resp.StatusCode < 300 && resp.StatusCode != 200 {
+		log.Debugf("[DirBrute] Detected url : %s, StatusCode : %d", dictUrl, resp.StatusCode )
 		return
 	}
 	if resp.StatusCode > 399 && resp.StatusCode != 500 && resp.StatusCode != 403 {
+		log.Debugf("[DirBrute] Detected url : %s, StatusCode : %d", dictUrl, resp.StatusCode )
 		return
 	}
 	if len(data) == 0{
+		log.Debugf("[DirBrute] Detected url : %s, Body Data 0 size", dictUrl)
 		return
 	}
 
 	// 不相似
 	h := utils.GetHash(data)
-	if !dir.isInBlackList(h) {
-		template := fmt.Sprintf("[!] [%d] [%d] - %s", resp.StatusCode, len(data), req.URL.String())
-		dir.list = append(dir.list, template)
+	if dir.isInBlackList(h) {
+		log.Debugf("The similarity of the page %s to BlackList is less than 8, StatusCode : %d, hash is %d", dictUrl, resp.StatusCode, h)
+		return
 	}
-	log.Debugf("The similarity of the page %s to NotFoundPage is less than 10", resp.Request.URL.String())
+	template := fmt.Sprintf("[!] [%d] [%d] - %s", resp.StatusCode, len(data), dictUrl)
+	log.Debugf("[DirBrute] Detected url %s hash is %d, %d", dictUrl, h, resp.StatusCode)
+	dir.list = append(dir.list, template)
 }
 
 // isInBlackList 根据simhash算法计算相似性，不相似即返回false
@@ -151,9 +155,9 @@ func (dir *DirBrute) isInBlackList(h uint64) bool {
 		}
 	}
 	// 不相似的追加
-	dir.Lock()
-	dir.Simhash = append(dir.Simhash, h)
-	dir.Unlock()
+	//dir.Lock()
+	//dir.Simhash = append(dir.Simhash, h)
+	//dir.Unlock()
 	return false
 }
 
@@ -162,19 +166,19 @@ func (dir *DirBrute) detectPseudo() (err error) {
 	dir.Lock()
 	defer dir.Unlock()
 	resp, err := dir.client.Get(dir.ErrorUrl)
-	if err != nil {
-		return
+	if err == nil {
+		data := utils.DumpHttpResponse(resp)
+		hash := utils.GetHash(data)
+		dir.Simhash = append(dir.Simhash, hash)
+		log.Debugf("[DirBrute] %s hash is : %d", dir.ErrorUrl, hash)
 	}
-	data := utils.DumpHttpResponse(resp)
-	hash := utils.GetHash(data)
-	dir.Simhash = append(dir.Simhash, hash)
 
 	resp, err = dir.client.Get(dir.IndexUrl)
-	if err != nil {
-		return
+	if err == nil {
+		data := utils.DumpHttpResponse(resp)
+		hash := utils.GetHash(data)
+		dir.Simhash = append(dir.Simhash, hash)
+		log.Debugf("[DirBrute] %s hash is : %d", dir.IndexUrl, hash)
 	}
-	data = utils.DumpHttpResponse(resp)
-	hash = utils.GetHash(data)
-	dir.Simhash = append(dir.Simhash, hash)
 	return
 }
