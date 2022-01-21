@@ -135,15 +135,15 @@ func (r *Runner) CreateRunner() {
 		// 计算超时时间大小
 		dicts, _ := brute.PrepareDict()
 		var timeout int
-		if len(dicts) < 40000 {
-			// 4w的字典实测基本在几十秒左右，60秒保底，180顶天了
-			timeout = 180
+		if len(dicts) < 4000 {
+			// 按每秒13个请求计算超时时间
+			timeout = 300
 		} else {
 			// 按每秒220个请求计算超时时间
-			timeout = len(dicts) / 220
+			timeout = len(dicts) / 13
 		}
 
-		r.DirStatus.AllJob = len(r.DirBrutes) + 1
+		r.DirStatus.AllJob = len(r.DirBrutes)
 		for _, d := range r.DirBrutes {
 			ch := make(chan []string)
 			d := d
