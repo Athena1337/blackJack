@@ -67,6 +67,7 @@ func Action(c *cli.Context) error {
 
 	if c.String("u") == "" && c.String("l") == "" && c.String("i") == ""{
 		cli.ShowAppHelp(c)
+		log.Fatal("Need More Param...")
 	}else if c.String("u") != ""{
 		// 根据url扫描
 		r.CreateRunner()

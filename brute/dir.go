@@ -24,13 +24,14 @@ type DirStatus struct {
 
 type DirBrute struct {
 	sync.Mutex
-	IndexUrl string
-	ErrorUrl string
-	Options  *config.Options
-	client   *http.Client
-	Simhash  []uint64
-	list     []string
-	ua       string
+	IndexUrl         string
+	ErrorUrl         string
+	Options          *config.Options
+	client           *http.Client
+	Simhash          []uint64
+	ExistPageSimHash []uint64
+	list             []string
+	ua               string
 }
 
 func (dir *DirBrute) init() {
@@ -105,7 +106,7 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup, pri
 	if err != nil {
 		return
 	}
-	printer.UpdateText(fmt.Sprintf("[DirBrute] [%d/%d] Brute Force Target : %s Path : %s", process.DoneJob, process.AllJob, dir.IndexUrl, dict))
+	printer.UpdateText(fmt.Sprintf("[DirBrute] [%d/%d] Brute Force Target : %s", process.DoneJob, process.AllJob, dir.IndexUrl))
 
 	// set default user agent
 	req.Header.Add("User-Agent", dir.ua)
@@ -122,14 +123,14 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup, pri
 		return
 	}
 	if resp.StatusCode < 300 && resp.StatusCode != 200 {
-		log.Debugf("[DirBrute] Detected url : %s, StatusCode : %d", dictUrl, resp.StatusCode )
+		log.Debugf("[DirBrute] Detected url : %s, StatusCode : %d", dictUrl, resp.StatusCode)
 		return
 	}
 	if resp.StatusCode > 399 && resp.StatusCode != 500 && resp.StatusCode != 403 {
-		log.Debugf("[DirBrute] Detected url : %s, StatusCode : %d", dictUrl, resp.StatusCode )
+		log.Debugf("[DirBrute] Detected url : %s, StatusCode : %d", dictUrl, resp.StatusCode)
 		return
 	}
-	if len(data) == 0{
+	if len(data) == 0 {
 		log.Debugf("[DirBrute] Detected url : %s, Body Data 0 size", dictUrl)
 		return
 	}
@@ -140,6 +141,20 @@ func (dir *DirBrute) request(dict string, wg *sizedwaitgroup.SizedWaitGroup, pri
 		log.Debugf("The similarity of the page %s to BlackList is less than 8, StatusCode : %d, hash is %d", dictUrl, resp.StatusCode, h)
 		return
 	}
+
+	// 与已知页面完全相同的页面，不再输出
+	for _, hash := range dir.ExistPageSimHash {
+		if utils.IsEqualHash(hash, h) {
+			log.Debugf("The page %s same as the known page, StatusCode : %d, hash is %d", dictUrl, resp.StatusCode, h)
+			return
+		}
+	}
+
+	// 保存新页面hash
+	dir.Lock()
+	dir.ExistPageSimHash = append(dir.ExistPageSimHash, h)
+	dir.Unlock()
+
 	template := fmt.Sprintf("[!] [%d] [%d] - %s", resp.StatusCode, len(data), dictUrl)
 	log.Debugf("[DirBrute] Detected url %s hash is %d, %d", dictUrl, h, resp.StatusCode)
 	dir.list = append(dir.list, template)
@@ -154,10 +169,6 @@ func (dir *DirBrute) isInBlackList(h uint64) bool {
 			return true
 		}
 	}
-	// 不相似的追加
-	//dir.Lock()
-	//dir.Simhash = append(dir.Simhash, h)
-	//dir.Unlock()
 	return false
 }
 

@@ -10,8 +10,8 @@ import (
 func TestStart(t *testing.T) {
 	DEBUG = false
 	d := &DirBrute{
-		IndexUrl: "http://bilibili.com/",
-		ErrorUrl: "http://192.168.22.176:8080/ljaisdkhfkjashdfkjahsdjkf",
+		IndexUrl: "https://os.alipayobjects.com",
+		ErrorUrl: "https://os.alipayobjects.com/ljaisdkhfkjashdfkjahsdjkf",
 		Options: &config.DefaultOption,
 	}
 	var output chan []string

@@ -19,3 +19,13 @@ func IsSimilarHash(hash1 uint64, hash2 uint64) bool{
 	}
 	return true
 }
+
+// IsEqualHash 判断页面hash是否相同
+func IsEqualHash(hash1 uint64, hash2 uint64) bool{
+	rs := simhash.Compare(hash1, hash2)
+	if rs == 0 {
+		return true
+	}
+	return false
+
+}
