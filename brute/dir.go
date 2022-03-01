@@ -1,8 +1,8 @@
 package brute
 
 import (
-	"blackJack/config"
-	"blackJack/utils"
+	"github.com/Athena1337/blackJack/config"
+	"github.com/Athena1337/blackJack/utils"
 	"crypto/tls"
 	"fmt"
 	"github.com/hashicorp/go-retryablehttp"

@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"blackJack/config"
-	"blackJack/runner"
-	"blackJack/utils"
+	"github.com/Athena1337/blackJack/config"
+	"github.com/Athena1337/blackJack/runner"
+	"github.com/Athena1337/blackJack/utils"
 	"fmt"
 	"github.com/t43Wiu6/tlog"
 	"github.com/urfave/cli/v2"
@@ -16,7 +16,7 @@ var options = &config.Options{}
 
 func Parse(){
 	app := cli.NewApp()
-	app.Name = "blackJack"
+	app.Name = "github.com/Athena1337/blackJack"
 	app.Usage = "Usage Menu"
 	app.HideVersion = false
 	app.Flags = Init()

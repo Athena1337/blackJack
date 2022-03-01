@@ -1,8 +1,8 @@
 package main
 
 import (
-	"blackJack/cli"
-	"blackJack/runner"
+	"github.com/Athena1337/blackJack/cli"
+	"github.com/Athena1337/blackJack/runner"
 	log "github.com/t43Wiu6/tlog"
 )
 

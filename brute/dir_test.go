@@ -1,7 +1,7 @@
 package brute
 
 import (
-	"blackJack/config"
+	"github.com/Athena1337/blackJack/config"
 	"github.com/pterm/pterm"
 	. "github.com/t43Wiu6/tlog"
 	"testing"

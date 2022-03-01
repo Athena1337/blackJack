@@ -1,7 +1,7 @@
 package finger
 
 import (
-	"blackJack/utils"
+	"github.com/Athena1337/blackJack/utils"
 	"encoding/json"
 	"github.com/t43Wiu6/tlog"
 	"io/ioutil"

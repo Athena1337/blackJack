@@ -1,7 +1,7 @@
 package runner
 
 import (
-	"blackJack/utils"
+	"github.com/Athena1337/blackJack/utils"
 	"io"
 	"io/ioutil"
 )

@@ -1,7 +1,7 @@
 package config
 
 import (
-	"blackJack/utils"
+	"github.com/Athena1337/blackJack/utils"
 	"github.com/t43Wiu6/tlog"
 	"io/ioutil"
 	"net/http"

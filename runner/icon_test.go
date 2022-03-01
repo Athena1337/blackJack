@@ -1,7 +1,7 @@
 package runner
 
 import (
-	"blackJack/config"
+	"github.com/Athena1337/blackJack/config"
 	"testing"
 )
 

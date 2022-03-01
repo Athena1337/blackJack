@@ -1,10 +1,10 @@
 package runner
 
 import (
-	"blackJack/brute"
-	"blackJack/config"
-	"blackJack/finger"
-	"blackJack/utils"
+	"github.com/Athena1337/blackJack/brute"
+	"github.com/Athena1337/blackJack/config"
+	"github.com/Athena1337/blackJack/finger"
+	"github.com/Athena1337/blackJack/utils"
 	"crypto/tls"
 	"errors"
 	"fmt"
