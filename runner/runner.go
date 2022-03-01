@@ -359,7 +359,7 @@ retry:
 	if err != nil{
 		log.Debugf("Cdn Initialize Failed %v", err)
 	}else{
-		if found, err := cdn.Check(net.ParseIP(targetUrl)); found && err == nil {
+		if found, _, err := cdn.Check(net.ParseIP(targetUrl)); found && err == nil {
 			resultContent.CDN = "isCDN"
 		} else {
 			log.Debugf("%s", err)
