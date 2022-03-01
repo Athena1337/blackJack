@@ -1,4 +1,4 @@
-module blackJack
+module github.com/Athena1337/blackJack
 
 go 1.16
 
