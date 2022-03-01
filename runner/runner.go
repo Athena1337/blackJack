@@ -361,8 +361,8 @@ retry:
 	}else{
 		if found, _, err := cdn.Check(net.ParseIP(targetUrl)); found && err == nil {
 			resultContent.CDN = "isCDN"
-		} else {
-			log.Debugf("%s", err)
+		} else if err != nil{
+			log.Debugf("Check CDN Error, %v", err)
 		}
 	}
 
